@@ -1,0 +1,27 @@
+{
+  "extends": "@scopeguard/tsconfig/nextjs.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "@scopeguard/ui": [
+        "../../packages/ui/src"
+      ],
+      "@scopeguard/db": [
+        "../../packages/db/src"
+      ]
+    },
+    "isolatedModules": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

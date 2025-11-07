@@ -1,0 +1,27 @@
+{
+  "name": "@scopeguard/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": ["src", "prisma"],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "studio": "prisma studio",
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.12.1"
+  },
+  "devDependencies": {
+    "prisma": "^5.12.1",
+    "tsx": "^4.8.1"
+  }
+}

@@ -1,0 +1,31 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15
+    container_name: scopeguard-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: scopeguard
+      POSTGRES_PASSWORD: scopeguard
+      POSTGRES_DB: scopeguard
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+  s3:
+    image: localstack/localstack:3.5
+    container_name: scopeguard-localstack
+    restart: unless-stopped
+    environment:
+      - SERVICES=s3
+      - AWS_DEFAULT_REGION=us-east-1
+      - EDGE_PORT=4566
+      - AWS_ACCESS_KEY_ID=localstack
+      - AWS_SECRET_ACCESS_KEY=localstack
+    ports:
+      - '4566:4566'
+    volumes:
+      - './infra/localstack:/etc/localstack/init/ready.d'
+volumes:
+  postgres-data:
