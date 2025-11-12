@@ -1,7 +1,9 @@
 {
-  "extends": "@scopeguard/tsconfig/base.json",
+  "extends": "@scopeguard/typescript-config/base.json",
   "compilerOptions": {
-    "outDir": "./dist"
+    "outDir": "dist",
+    "rootDir": "src"
   },
-  "include": ["src", "prisma"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

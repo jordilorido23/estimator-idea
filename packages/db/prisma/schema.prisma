@@ -8,35 +8,93 @@ datasource db {
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
+// Enums for type safety
+enum LeadStatus {
+  NEW
+  QUALIFIED
+  DECLINED
+  ESTIMATED
+}
+
+enum EstimateStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+}
+
+enum Confidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TradeType {
+  ROOFING
+  PAINTING
+  FLOORING
+  SIDING
+  BATH
+  KITCHEN
+  DECK
+  FENCE
+  ADDITION
+  OTHER
+}
+
+enum UserRole {
+  OWNER
+  ESTIMATOR
+  PM
+  ADMIN
+}
+
+// Models
 model Contractor {
-  id           String   @id @default(cuid())
+  id           String           @id @default(cuid())
+  slug         String           @unique
   companyName  String
-  slug         String   @unique
-  email        String   @unique
-  phone        String
-  trades       String[]
+  email        String           @unique
+  phone        String?
+  trades       TradeType[]
   leads        Lead[]
   estimates    Estimate[]
-  createdAt    DateTime @default(now())
+  users        ContractorUser[]
+  createdAt    DateTime         @default(now())
+}
+
+model ContractorUser {
+  id           String     @id @default(cuid())
+  contractorId String
+  contractor   Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  email        String     @unique
+  role         UserRole   @default(PM)
+  createdAt    DateTime   @default(now())
+
+  @@index([contractorId])
 }
 
 model Lead {
-  id              String     @id @default(cuid())
-  contractorId    String
-  contractor      Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
-  homeownerName   String
-  homeownerEmail  String
-  homeownerPhone  String
-  address         String
-  tradeType       String
-  budget          Decimal?   @db.Decimal(12, 2)
-  timeline        String?
-  status          String     @default("new")
-  score           Float?
-  notes           String?    @db.Text
-  photos          Photo[]
-  estimates       Estimate[]
-  createdAt       DateTime   @default(now())
+  id             String     @id @default(cuid())
+  contractorId   String
+  contractor     Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  homeownerName  String
+  homeownerEmail String
+  homeownerPhone String
+  address        String
+  tradeType      TradeType
+  budgetCents    Int?
+  timeline       String?
+  photos         Photo[]
+  takeoffs       Takeoff[]
+  estimates      Estimate[]
+  status         LeadStatus @default(NEW)
+  score          Float?
+  notes          String?    @db.Text
+  createdAt      DateTime   @default(now())
+
+  @@index([contractorId, createdAt])
+  @@index([status, score])
 }
 
 model Photo {
@@ -47,21 +105,63 @@ model Photo {
   key       String   @unique
   metadata  Json?
   createdAt DateTime @default(now())
+
+  @@index([leadId])
+}
+
+model Takeoff {
+  id         String    @id @default(cuid())
+  leadId     String
+  lead       Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tradeType  TradeType
+  provider   String
+  version    String
+  data       Json
+  confidence Float?
+  createdAt  DateTime  @default(now())
+
+  @@index([leadId, createdAt])
 }
 
 model Estimate {
-  id           String     @id @default(cuid())
+  id           String         @id @default(cuid())
   leadId       String
   contractorId String
-  lead         Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  contractor   Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  lead         Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contractor   Contractor     @relation(fields: [contractorId], references: [id], onDelete: Cascade)
   lineItems    Json
-  subtotal     Decimal?   @db.Decimal(12, 2)
-  margin       Decimal?   @db.Decimal(5, 2)
-  contingency  Decimal?   @db.Decimal(5, 2)
-  total        Decimal?   @db.Decimal(12, 2)
-  confidence   Int?
-  status       String      @default("draft")
+  subtotal     Decimal        @db.Decimal(18, 2)
+  margin       Decimal        @db.Decimal(5, 2)
+  contingency  Decimal        @db.Decimal(5, 2)
+  total        Decimal        @db.Decimal(18, 2)
+  confidence   Confidence
+  status       EstimateStatus @default(DRAFT)
   proposalUrl  String?
-  createdAt    DateTime    @default(now())
+  createdAt    DateTime       @default(now())
+
+  @@index([contractorId, createdAt])
+  @@index([leadId])
+}
+
+model Template {
+  id        String    @id @default(cuid())
+  tradeType TradeType
+  name      String
+  lineItems Json
+  createdAt DateTime  @default(now())
+
+  @@index([tradeType])
+}
+
+model SupplierPrice {
+  id           String   @id @default(cuid())
+  contractorId String
+  materialSKU  String
+  description  String
+  unitCost     Decimal  @db.Decimal(18, 4)
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@index([contractorId, updatedAt])
+  @@index([materialSKU])
 }

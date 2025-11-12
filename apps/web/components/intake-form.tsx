@@ -57,7 +57,7 @@ const DEFAULT_PROJECT_TYPES = [
 ];
 
 const MAX_PHOTOS = 10;
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_FILE_SIZE = 15 * 1024 * 1024;
 
 const initialValues: LeadIntakeValues = {
   homeownerName: '',
@@ -80,6 +80,7 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
     message: null
   });
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [leadTempId, setLeadTempId] = React.useState(() => crypto.randomUUID());
 
   const options = projectTypes && projectTypes.length > 0 ? projectTypes : DEFAULT_PROJECT_TYPES;
   const form = useForm<LeadIntakeValues>({
@@ -131,90 +132,105 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
     form.setValue('photos', uploadedPhotoMetadata, { shouldValidate: true });
   }, [uploadedPhotoMetadata, form]);
 
+  const uploadPhoto = React.useCallback(
+    async (photo: LocalPhoto) => {
+      try {
+        setPhotoState(photo.id, { status: 'uploading', error: undefined });
+        const presignResponse = await fetch('/api/uploads/presign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contractorSlug,
+            leadTempId,
+            contentType: photo.type,
+            fileName: photo.name,
+            fileSize: photo.size
+          })
+        });
+
+        const presignPayload = await presignResponse.json().catch(() => null);
+
+        if (!presignResponse.ok || !presignPayload?.upload) {
+          const message = presignPayload?.error ?? 'Could not prepare an upload slot.';
+          throw new Error(message);
+        }
+
+        const { upload } = presignPayload;
+        const formData = new FormData();
+        Object.entries(upload.fields).forEach(([key, value]) => {
+          formData.append(key, value);
+        });
+        formData.append('file', photo.file);
+
+        const s3Response = await fetch(upload.url, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!s3Response.ok) {
+          throw new Error('Upload failed. Please try again.');
+        }
+
+        setPhotoState(photo.id, {
+          status: 'uploaded',
+          key: upload.key,
+          url: upload.publicUrl
+        });
+      } catch (error) {
+        console.error('Photo upload error', error);
+        const message = error instanceof Error ? error.message : 'Upload failed. Please try again.';
+        setPhotoState(photo.id, { status: 'error', error: message });
+        setUploadError(message);
+      }
+    },
+    [contractorSlug, leadTempId, setPhotoState]
+  );
+
   const handleDrop = React.useCallback(
-    async (acceptedFiles: File[]) => {
+    (acceptedFiles: File[]) => {
       if (!acceptedFiles.length) return;
       setUploadError(null);
 
-      const spaceAvailable = MAX_PHOTOS - photos.length;
-      const filesToUpload = acceptedFiles.slice(0, spaceAvailable);
-      if (!filesToUpload.length) {
+      const spaceAvailable = MAX_PHOTOS - photosRef.current.length;
+      if (spaceAvailable <= 0) {
         setUploadError(`You can upload up to ${MAX_PHOTOS} photos.`);
         return;
+      }
+
+      const imageFiles = acceptedFiles.filter((file) => file.type?.startsWith('image/'));
+      if (imageFiles.length === 0) {
+        setUploadError('Only image files are allowed.');
+        return;
+      }
+
+      if (imageFiles.length !== acceptedFiles.length) {
+        setUploadError('Only image files are allowed; skipped unsupported files.');
+      }
+
+      const filesToUpload = imageFiles.slice(0, spaceAvailable);
+
+      if (imageFiles.length > spaceAvailable) {
+        setUploadError(
+          `You can upload only ${spaceAvailable} more photo${spaceAvailable === 1 ? '' : 's'}. Extra files were skipped.`
+        );
       }
 
       const newPhotos: LocalPhoto[] = filesToUpload.map((file) => ({
         id: crypto.randomUUID(),
         name: file.name,
         size: file.size,
-        type: file.type || 'application/octet-stream',
+        type: file.type,
         file,
         preview: URL.createObjectURL(file),
         status: 'pending'
       }));
 
       setPhotos((prev) => [...prev, ...newPhotos]);
-
-      try {
-        const response = await fetch('/api/uploads/presign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contractorSlug,
-            files: newPhotos.map((photo) => ({
-              id: photo.id,
-              name: photo.name,
-              type: photo.type,
-              size: photo.size
-            }))
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error('Could not prepare uploads. Please try again.');
-        }
-
-        const { uploads } = await response.json();
-
-        for (const photo of newPhotos) {
-          const uploadDetails = uploads.find((upload: { id?: string }) => upload.id === photo.id);
-
-          if (!uploadDetails) {
-            setPhotoState(photo.id, {
-              status: 'error',
-              error: 'Missing upload configuration'
-            });
-            continue;
-          }
-
-          setPhotoState(photo.id, { status: 'uploading' });
-
-          const uploadResponse = await fetch(uploadDetails.uploadUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': photo.type },
-            body: photo.file
-          });
-
-          if (!uploadResponse.ok) {
-            throw new Error('Upload failed. Please try again.');
-          }
-
-          setPhotoState(photo.id, {
-            status: 'uploaded',
-            key: uploadDetails.key,
-            url: uploadDetails.url
-          });
-        }
-      } catch (error) {
-        console.error('Photo upload error', error);
-        const message = error instanceof Error ? error.message : 'Upload failed. Please try again.';
-        newPhotos.forEach((photo) => {
-          setPhotoState(photo.id, { status: 'error', error: message });
-        });
-        setUploadError(message);
-      }
+      newPhotos.forEach((photo) => {
+        void uploadPhoto(photo);
+      });
     },
-    [contractorSlug, photos.length, setPhotoState]
+    [setPhotoState, uploadPhoto]
   );
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
@@ -266,6 +282,8 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
         prev.forEach((photo) => URL.revokeObjectURL(photo.preview));
         return [];
       });
+      setLeadTempId(crypto.randomUUID());
+      setUploadError(null);
     } catch (error) {
       console.error('Lead intake submit error', error);
       setFormStatus({
@@ -432,7 +450,7 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium">Photos</p>
-                <p className="text-xs text-muted-foreground">Drag & drop or click to upload up to {MAX_PHOTOS} photos (max 10MB each).</p>
+                <p className="text-xs text-muted-foreground">Drag & drop or click to upload up to {MAX_PHOTOS} photos (max 15MB each).</p>
               </div>
               {uploadError ? <p className="text-xs text-destructive">{uploadError}</p> : null}
             </div>

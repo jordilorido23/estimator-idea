@@ -1,7 +1,9 @@
 {
-  "extends": "@scopeguard/tsconfig/base.json",
+  "extends": "@scopeguard/typescript-config/react-library.json",
   "compilerOptions": {
-    "jsx": "react-jsx"
+    "outDir": "dist",
+    "rootDir": "src"
   },
-  "include": ["src"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }
