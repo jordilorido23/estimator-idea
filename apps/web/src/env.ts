@@ -15,12 +15,18 @@ const serverSchema = z.object({
   // AWS S3
   AWS_ACCESS_KEY_ID: z.string().min(1),
   AWS_SECRET_ACCESS_KEY: z.string().min(1),
-  S3_BUCKET: z.string().min(1),
-  S3_REGION: z.string().min(1),
+  AWS_S3_BUCKET: z.string().min(1),
+  AWS_S3_REGION: z.string().min(1),
 
   // Stripe
   STRIPE_SECRET_KEY: z.string().startsWith("sk_"),
   STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_").optional(),
+
+  // Anthropic AI
+  ANTHROPIC_API_KEY: z.string().startsWith("sk-ant-"),
+
+  // Resend Email
+  RESEND_API_KEY: z.string().min(1).optional(),
 
   // Node environment
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -62,10 +68,12 @@ const getServerEnv = () => {
     CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
     AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
-    S3_BUCKET: process.env.S3_BUCKET,
-    S3_REGION: process.env.S3_REGION,
+    AWS_S3_BUCKET: process.env.AWS_S3_BUCKET,
+    AWS_S3_REGION: process.env.AWS_S3_REGION,
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
     NODE_ENV: process.env.NODE_ENV,
   }
 }
