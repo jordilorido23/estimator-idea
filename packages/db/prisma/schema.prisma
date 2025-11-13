@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider          = "postgresql"
-  url               = env("DATABASE_URL")
-  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // Enums for type safety
@@ -49,18 +48,33 @@ enum UserRole {
   ADMIN
 }
 
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentType {
+  DEPOSIT
+  FINAL
+  MILESTONE
+}
+
 // Models
 model Contractor {
-  id           String           @id @default(cuid())
-  slug         String           @unique
-  companyName  String
-  email        String           @unique
-  phone        String?
-  trades       TradeType[]
-  leads        Lead[]
-  estimates    Estimate[]
-  users        ContractorUser[]
-  createdAt    DateTime         @default(now())
+  id                String           @id @default(cuid())
+  slug              String           @unique
+  companyName       String
+  email             String           @unique
+  phone             String?
+  trades            TradeType[]
+  depositPercentage Decimal          @default(25) @db.Decimal(5, 2)
+  leads             Lead[]
+  estimates         Estimate[]
+  users             ContractorUser[]
+  createdAt         DateTime         @default(now())
 }
 
 model ContractorUser {
@@ -75,23 +89,24 @@ model ContractorUser {
 }
 
 model Lead {
-  id             String     @id @default(cuid())
-  contractorId   String
-  contractor     Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
-  homeownerName  String
-  homeownerEmail String
-  homeownerPhone String
-  address        String
-  tradeType      TradeType
-  budgetCents    Int?
-  timeline       String?
-  photos         Photo[]
-  takeoffs       Takeoff[]
-  estimates      Estimate[]
-  status         LeadStatus @default(NEW)
-  score          Float?
-  notes          String?    @db.Text
-  createdAt      DateTime   @default(now())
+  id               String     @id @default(cuid())
+  contractorId     String
+  contractor       Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  homeownerName    String
+  homeownerEmail   String
+  homeownerPhone   String
+  address          String
+  tradeType        TradeType
+  budgetCents      Int?
+  timeline         String?
+  stripeCustomerId String?
+  photos           Photo[]
+  takeoffs         Takeoff[]
+  estimates        Estimate[]
+  status           LeadStatus @default(NEW)
+  score            Float?
+  notes            String?    @db.Text
+  createdAt        DateTime   @default(now())
 
   @@index([contractorId, createdAt])
   @@index([status, score])
@@ -137,10 +152,14 @@ model Estimate {
   confidence   Confidence
   status       EstimateStatus @default(DRAFT)
   proposalUrl  String?
+  publicToken  String?        @unique @default(cuid())
+  expiresAt    DateTime?
+  payments     Payment[]
   createdAt    DateTime       @default(now())
 
   @@index([contractorId, createdAt])
   @@index([leadId])
+  @@index([publicToken])
 }
 
 model Template {
@@ -164,4 +183,21 @@ model SupplierPrice {
 
   @@index([contractorId, updatedAt])
   @@index([materialSKU])
+}
+
+model Payment {
+  id               String        @id @default(cuid())
+  estimateId       String
+  estimate         Estimate      @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  stripePaymentId  String?       @unique
+  stripeCheckoutId String?       @unique
+  amount           Decimal       @db.Decimal(18, 2)
+  type             PaymentType
+  status           PaymentStatus @default(PENDING)
+  paidAt           DateTime?
+  metadata         Json?
+  createdAt        DateTime      @default(now())
+
+  @@index([estimateId])
+  @@index([status])
 }

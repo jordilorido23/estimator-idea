@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { redirect, notFound } from 'next/navigation';
 import { prisma } from '@scopeguard/db';
 import Link from 'next/link';
+import { PdfDownloadButton } from './pdf-download-button';
 
 type PageProps = {
   params: {
@@ -183,9 +184,7 @@ export default async function EstimateDetailPage({ params }: PageProps) {
             <button className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted">
               Edit Line Items
             </button>
-            <button className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-              Generate PDF Proposal (Coming Soon)
-            </button>
+            <PdfDownloadButton estimateId={estimate.id} />
           </>
         )}
       </div>

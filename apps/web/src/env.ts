@@ -28,6 +28,9 @@ const serverSchema = z.object({
   // Resend Email
   RESEND_API_KEY: z.string().min(1).optional(),
 
+  // Sentry
+  SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
+
   // Node environment
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 })
@@ -39,6 +42,8 @@ const serverSchema = z.object({
 const clientSchema = z.object({
   NEXT_PUBLIC_SITE_URL: z.string().url(),
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().startsWith("pk_"),
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().startsWith("pk_"),
+  NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
 })
 
 /**
@@ -55,6 +60,8 @@ const getClientEnv = () => {
   return {
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+    NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
   }
 }
 
@@ -74,6 +81,7 @@ const getServerEnv = () => {
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
+    SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
     NODE_ENV: process.env.NODE_ENV,
   }
 }
@@ -120,6 +128,8 @@ export const env = parseEnv()
 export const clientEnv: z.infer<typeof clientSchema> = {
   NEXT_PUBLIC_SITE_URL: env.NEXT_PUBLIC_SITE_URL,
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+  NEXT_PUBLIC_SENTRY_DSN: env.NEXT_PUBLIC_SENTRY_DSN,
 }
 
 /**
