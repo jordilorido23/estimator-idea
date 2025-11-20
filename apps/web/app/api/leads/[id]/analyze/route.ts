@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@scopeguard/db';
 import { analyzeMultiplePhotos } from '@/lib/ai/photo-analyzer';
 import { generateScopeOfWork } from '@/lib/ai/scope-generator';
+import { verifyLeadOwnership, handleAuthError } from '@/lib/auth-helpers';
+import { checkRateLimit, ratelimit } from '@/lib/rate-limit';
 
 type RouteContext = {
   params: {
@@ -17,40 +19,58 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     const { id } = context.params;
 
-    // Fetch lead with photos
-    const lead = await prisma.lead.findUnique({
+    // Check authorization - verify user owns this lead
+    const { lead, contractorUser } = await verifyLeadOwnership(id);
+
+    // Rate limiting - prevent AI cost abuse
+    const identifier = `analyze:${contractorUser.contractorId}`;
+    const rateLimitResult = await checkRateLimit(ratelimit.moderate, identifier);
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded. Please try again later.',
+          retryAfter: rateLimitResult.reset,
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': rateLimitResult.reset.toString(),
+          },
+        }
+      );
+    }
+
+    // Fetch lead with photos (need to refetch to get photos)
+    const leadWithPhotos = await prisma.lead.findUnique({
       where: { id },
       include: {
         photos: true,
       },
     });
 
-    if (!lead) {
-      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
-    }
-
-    if (lead.photos.length === 0) {
+    if (!leadWithPhotos || leadWithPhotos.photos.length === 0) {
       return NextResponse.json(
         { error: 'No photos available for analysis' },
         { status: 400 }
       );
     }
 
-    console.log(`Manual analysis triggered for lead ${id} with ${lead.photos.length} photos`);
+    console.log(`Manual analysis triggered for lead ${id} with ${leadWithPhotos.photos.length} photos`);
 
     // Analyze all photos
-    const photoUrls = lead.photos.map((photo) => photo.url);
+    const photoUrls = leadWithPhotos.photos.map((photo) => photo.url);
     const analysisResults = await analyzeMultiplePhotos(photoUrls);
 
     // Generate scope of work
     const scope = await generateScopeOfWork({
       leadData: {
-        homeownerName: lead.homeownerName,
-        address: lead.address,
-        tradeType: lead.tradeType,
-        budget: lead.budgetCents ? lead.budgetCents / 100 : undefined,
-        timeline: lead.timeline ?? undefined,
-        notes: lead.notes ?? undefined,
+        homeownerName: leadWithPhotos.homeownerName,
+        address: leadWithPhotos.address,
+        tradeType: leadWithPhotos.tradeType,
+        budget: leadWithPhotos.budgetCents ? leadWithPhotos.budgetCents / 100 : undefined,
+        timeline: leadWithPhotos.timeline ?? undefined,
+        notes: leadWithPhotos.notes ?? undefined,
       },
       photoAnalyses: analysisResults.photos.map((p) => p.analysis),
     });
@@ -59,7 +79,7 @@ export async function POST(request: Request, context: RouteContext) {
     const takeoff = await prisma.takeoff.create({
       data: {
         leadId: id,
-        tradeType: lead.tradeType,
+        tradeType: leadWithPhotos.tradeType,
         provider: 'anthropic',
         version: 'claude-3-5-sonnet-20241022',
         confidence: analysisResults.summary.overallConfidence,
@@ -74,9 +94,9 @@ export async function POST(request: Request, context: RouteContext) {
 
     // Update lead score
     const score = calculateLeadScore(analysisResults.summary, {
-      budget: lead.budgetCents ? lead.budgetCents / 100 : undefined,
-      timeline: lead.timeline ?? undefined,
-      notes: lead.notes ?? undefined,
+      budget: leadWithPhotos.budgetCents ? leadWithPhotos.budgetCents / 100 : undefined,
+      timeline: leadWithPhotos.timeline ?? undefined,
+      notes: leadWithPhotos.notes ?? undefined,
     });
 
     await prisma.lead.update({
@@ -91,7 +111,7 @@ export async function POST(request: Request, context: RouteContext) {
       takeoffId: takeoff.id,
       score,
       summary: {
-        photoCount: lead.photos.length,
+        photoCount: leadWithPhotos.photos.length,
         confidence: analysisResults.summary.overallConfidence,
         primaryTrades: analysisResults.summary.primaryTrades,
         workItemCount: analysisResults.summary.totalWorkItems,
@@ -99,6 +119,12 @@ export async function POST(request: Request, context: RouteContext) {
       scopeOfWork: scope,
     });
   } catch (error) {
+    // Handle authorization errors
+    const authErrorResponse = handleAuthError(error);
+    if (authErrorResponse.status !== 500) {
+      return authErrorResponse;
+    }
+
     console.error('Analysis error:', error);
     return NextResponse.json(
       {
@@ -117,6 +143,9 @@ export async function POST(request: Request, context: RouteContext) {
 export async function GET(request: Request, context: RouteContext) {
   try {
     const { id } = context.params;
+
+    // Check authorization - verify user owns this lead
+    await verifyLeadOwnership(id);
 
     // Fetch most recent takeoff for this lead
     const takeoff = await prisma.takeoff.findFirst({
@@ -138,6 +167,12 @@ export async function GET(request: Request, context: RouteContext) {
       createdAt: takeoff.createdAt,
     });
   } catch (error) {
+    // Handle authorization errors
+    const authErrorResponse = handleAuthError(error);
+    if (authErrorResponse.status !== 500) {
+      return authErrorResponse;
+    }
+
     console.error('Error fetching analysis:', error);
     return NextResponse.json(
       { error: 'Failed to fetch analysis' },

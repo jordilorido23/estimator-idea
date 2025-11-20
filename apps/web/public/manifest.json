@@ -1,0 +1,59 @@
+{
+  "name": "ScopeGuard - AI Preconstruction & Estimating",
+  "short_name": "ScopeGuard",
+  "description": "Centralize homeowner intake, automate takeoffs, and close projects faster with AI copilots built for busy contractors.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0a0a0a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "screenshots": [
+    {
+      "src": "/screenshot-mobile.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "View Leads",
+      "short_name": "Leads",
+      "description": "View and manage project leads",
+      "url": "/dashboard/leads",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "View Estimates",
+      "short_name": "Estimates",
+      "description": "View and manage estimates",
+      "url": "/dashboard/estimates",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

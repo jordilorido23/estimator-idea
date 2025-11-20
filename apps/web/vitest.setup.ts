@@ -17,3 +17,66 @@ process.env.SKIP_ENV_VALIDATION = 'true';
 
 // Mock fetch globally
 global.fetch = vi.fn();
+
+// Mock Next.js modules
+vi.mock('next/navigation', () => ({
+  useRouter: vi.fn(() => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+  })),
+  usePathname: vi.fn(() => '/'),
+  useSearchParams: vi.fn(() => new URLSearchParams()),
+}));
+
+// Mock Clerk auth - default to authenticated
+vi.mock('@clerk/nextjs/server', () => ({
+  auth: vi.fn(() => Promise.resolve({
+    userId: 'user_test123',
+    sessionId: 'session_test123',
+  })),
+  currentUser: vi.fn(() => Promise.resolve({
+    id: 'user_test123',
+    emailAddresses: [{ emailAddress: 'test@example.com' }],
+  })),
+}));
+
+// Mock Prisma client - will be customized per test
+vi.mock('@scopeguard/db', () => ({
+  prisma: {
+    contractor: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    lead: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    photo: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },
+    takeoff: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+    },
+    estimate: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    payment: {
+      create: vi.fn(),
+      update: vi.fn(),
+      findFirst: vi.fn(),
+    },
+  },
+}));

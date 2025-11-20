@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { redirect, notFound } from 'next/navigation';
 import { prisma } from '@scopeguard/db';
+import { StatusBadge } from '@scopeguard/ui';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -70,21 +71,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
           <h2 className="text-2xl font-bold">{lead.homeownerName}</h2>
           <p className="text-muted-foreground">{lead.address}</p>
         </div>
-        <div>
-          <span
-            className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${
-              lead.status === 'NEW'
-                ? 'bg-blue-100 text-blue-800'
-                : lead.status === 'QUALIFIED'
-                  ? 'bg-green-100 text-green-800'
-                  : lead.status === 'ESTIMATED'
-                    ? 'bg-purple-100 text-purple-800'
-                    : 'bg-gray-100 text-gray-800'
-            }`}
-          >
-            {lead.status}
-          </span>
-        </div>
+        <StatusBadge status={lead.status} size="lg" />
       </div>
 
       {/* Lead details */}

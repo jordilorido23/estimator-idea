@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { prisma } from '@scopeguard/db';
+import { StatusBadge } from '@scopeguard/ui';
 import Link from 'next/link';
 
 export default async function DashboardPage() {
@@ -119,19 +120,7 @@ export default async function DashboardPage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm">
-                        <span
-                          className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
-                            lead.status === 'NEW'
-                              ? 'bg-blue-100 text-blue-800'
-                              : lead.status === 'QUALIFIED'
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-800'
-                          }`}
-                        >
-                          {lead.status}
-                        </span>
-                      </div>
+                      <StatusBadge status={lead.status} />
                       {lead.score !== null && (
                         <div className="mt-1 text-xs text-muted-foreground">
                           Score: {Math.round(lead.score)}

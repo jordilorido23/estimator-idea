@@ -1,35 +1,24 @@
 import { getAnthropicClient, AI_MODELS } from '../ai';
-
-/**
- * Result of analyzing a single construction photo
- */
-export type PhotoAnalysis = {
-  tradeType: string[];
-  conditions: string[];
-  dimensions?: {
-    approximate: string;
-    confidence: 'low' | 'medium' | 'high';
-  };
-  materials: string[];
-  damage?: {
-    severity: 'minor' | 'moderate' | 'severe';
-    description: string;
-  };
-  accessConstraints: string[];
-  workItems: string[];
-  safetyHazards?: string[];
-  confidence: number; // 0-1 score
-  notes: string;
-};
+import { retryWithBackoff, AIError } from './retry';
+import { PhotoAnalysisSchema, type PhotoAnalysis } from './schemas';
 
 /**
  * Analyze a construction photo using Claude Vision
  * @param imageUrl - Public URL of the image to analyze
- * @returns Structured analysis of the photo
+ * @param returnResponse - If true, returns both analysis and raw API response for usage tracking
+ * @returns Structured analysis of the photo (and optionally the raw response)
  */
 export async function analyzeConstructionPhoto(
   imageUrl: string
-): Promise<PhotoAnalysis> {
+): Promise<PhotoAnalysis>;
+export async function analyzeConstructionPhoto(
+  imageUrl: string,
+  returnResponse: true
+): Promise<{ analysis: PhotoAnalysis; response: any }>;
+export async function analyzeConstructionPhoto(
+  imageUrl: string,
+  returnResponse?: boolean
+): Promise<PhotoAnalysis | { analysis: PhotoAnalysis; response: any }> {
   const client = getAnthropicClient();
 
   const prompt = `You are a construction expert analyzing a photo for an estimate.
@@ -69,51 +58,104 @@ Respond ONLY with valid JSON matching this structure:
 If information is not visible or applicable, omit that field (except tradeType, conditions, materials, accessConstraints, workItems, confidence, and notes which are required).`;
 
   try {
-    const response = await client.messages.create({
-      model: AI_MODELS.SONNET,
-      max_tokens: 2048,
-      messages: [
-        {
-          role: 'user',
-          content: [
+    // Wrap API call with retry logic and timeout
+    // Vision API can take longer, so use 45s timeout instead of default 30s
+    const response = await retryWithBackoff(
+      () =>
+        client.messages.create({
+          model: AI_MODELS.SONNET,
+          max_tokens: 2048,
+          messages: [
             {
-              type: 'image',
-              source: {
-                type: 'url',
-                url: imageUrl,
-              },
-            },
-            {
-              type: 'text',
-              text: prompt,
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  source: {
+                    type: 'url',
+                    url: imageUrl,
+                  },
+                },
+                {
+                  type: 'text',
+                  text: prompt,
+                },
+              ],
             },
           ],
-        },
-      ],
-    });
+        }),
+      {
+        maxAttempts: 3,
+        timeoutMs: 45000, // Vision API can be slower
+        initialDelayMs: 1000,
+      }
+    );
 
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
-      throw new Error('No text response from Claude');
+      throw new AIError('No text response from Claude', 'NO_TEXT_RESPONSE', false);
     }
 
     // Extract JSON from the response (may be wrapped in markdown code blocks)
     const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error('No JSON found in Claude response');
+      throw new AIError('No JSON found in Claude response', 'NO_JSON_RESPONSE', false);
     }
 
-    const analysis = JSON.parse(jsonMatch[0]) as PhotoAnalysis;
+    // Parse JSON
+    let parsedData: unknown;
+    try {
+      parsedData = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      throw new AIError(
+        'Invalid JSON in Claude response',
+        'INVALID_JSON',
+        false,
+        parseError
+      );
+    }
 
-    // Validate required fields
-    if (!analysis.tradeType || !analysis.workItems || analysis.confidence === undefined) {
-      throw new Error('Invalid analysis structure from Claude');
+    // Validate with Zod schema
+    const validationResult = PhotoAnalysisSchema.safeParse(parsedData);
+    if (!validationResult.success) {
+      console.error('Photo analysis validation failed:', {
+        errors: validationResult.error.flatten(),
+        rawResponse: textContent.text,
+      });
+      throw new AIError(
+        `Invalid analysis structure from Claude: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+        'INVALID_STRUCTURE',
+        false
+      );
+    }
+
+    const analysis = validationResult.data;
+
+    // Return both analysis and response if requested (for usage tracking)
+    if (returnResponse) {
+      return { analysis, response };
     }
 
     return analysis;
   } catch (error) {
+    // If it's already an AIError, just rethrow it
+    if (error instanceof AIError) {
+      console.error('Photo analysis failed:', {
+        code: error.code,
+        message: error.message,
+        retryable: error.retryable,
+      });
+      throw error;
+    }
+
+    // Wrap other errors
     console.error('Photo analysis error:', error);
-    throw new Error(`Failed to analyze photo: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new AIError(
+      `Failed to analyze photo: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      'ANALYSIS_FAILED',
+      false,
+      error
+    );
   }
 }
 

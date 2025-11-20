@@ -62,6 +62,13 @@ enum PaymentType {
   MILESTONE
 }
 
+enum ProjectOutcome {
+  WON
+  LOST
+  IN_PROGRESS
+  CANCELLED
+}
+
 // Models
 model Contractor {
   id                String           @id @default(cuid())
@@ -74,6 +81,7 @@ model Contractor {
   leads             Lead[]
   estimates         Estimate[]
   users             ContractorUser[]
+  aiUsages          AIUsage[]
   createdAt         DateTime         @default(now())
 }
 
@@ -103,6 +111,7 @@ model Lead {
   photos           Photo[]
   takeoffs         Takeoff[]
   estimates        Estimate[]
+  aiUsages         AIUsage[]
   status           LeadStatus @default(NEW)
   score            Float?
   notes            String?    @db.Text
@@ -110,6 +119,8 @@ model Lead {
 
   @@index([contractorId, createdAt])
   @@index([status, score])
+  @@index([tradeType])
+  @@index([contractorId, status, createdAt])
 }
 
 model Photo {
@@ -125,41 +136,58 @@ model Photo {
 }
 
 model Takeoff {
-  id         String    @id @default(cuid())
-  leadId     String
-  lead       Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  tradeType  TradeType
-  provider   String
-  version    String
-  data       Json
-  confidence Float?
-  createdAt  DateTime  @default(now())
+  id               String    @id @default(cuid())
+  leadId           String
+  lead             Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tradeType        TradeType
+  provider         String
+  version          String
+  data             Json
+  confidence       Float?
+  // AI analysis accuracy review fields
+  reviewedAt       DateTime?
+  accuracyFeedback Json? // Array of { field: string, correct: boolean, correctedValue?: any }
+  overallAccuracy  Float? // 0-1 score based on feedback
+  reviewNotes      String?   @db.Text
+  createdAt        DateTime  @default(now())
 
   @@index([leadId, createdAt])
+  @@index([reviewedAt])
 }
 
 model Estimate {
-  id           String         @id @default(cuid())
-  leadId       String
-  contractorId String
-  lead         Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  contractor   Contractor     @relation(fields: [contractorId], references: [id], onDelete: Cascade)
-  lineItems    Json
-  subtotal     Decimal        @db.Decimal(18, 2)
-  margin       Decimal        @db.Decimal(5, 2)
-  contingency  Decimal        @db.Decimal(5, 2)
-  total        Decimal        @db.Decimal(18, 2)
-  confidence   Confidence
-  status       EstimateStatus @default(DRAFT)
-  proposalUrl  String?
-  publicToken  String?        @unique @default(cuid())
-  expiresAt    DateTime?
-  payments     Payment[]
-  createdAt    DateTime       @default(now())
+  id              String          @id @default(cuid())
+  leadId          String
+  contractorId    String
+  lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contractor      Contractor      @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  lineItems       Json
+  subtotal        Decimal         @db.Decimal(18, 2)
+  margin          Decimal         @db.Decimal(5, 2)
+  contingency     Decimal         @db.Decimal(5, 2)
+  total           Decimal         @db.Decimal(18, 2)
+  confidence      Confidence
+  status          EstimateStatus  @default(DRAFT)
+  proposalUrl     String?
+  publicToken     String?         @unique @default(cuid())
+  expiresAt       DateTime?
+  // Project outcome feedback fields
+  projectOutcome  ProjectOutcome?
+  actualCost      Decimal?        @db.Decimal(18, 2)
+  completedAt     DateTime?
+  feedbackNotes   String?         @db.Text
+  variance        Decimal?        @db.Decimal(18, 2) // actualCost - total
+  variancePercent Decimal?        @db.Decimal(8, 2) // (variance / total) * 100 - FIXED: supports large variances
+  payments        Payment[]
+  aiUsages        AIUsage[]
+  createdAt       DateTime        @default(now())
 
   @@index([contractorId, createdAt])
   @@index([leadId])
   @@index([publicToken])
+  @@index([projectOutcome, completedAt])
+  @@index([status])
+  @@index([contractorId, status])
 }
 
 model Template {
@@ -200,4 +228,27 @@ model Payment {
 
   @@index([estimateId])
   @@index([status])
+}
+
+model AIUsage {
+  id            String     @id @default(cuid())
+  contractorId  String
+  contractor    Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  leadId        String?
+  lead          Lead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  estimateId    String?
+  estimate      Estimate?  @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+  operation     String // e.g., "photo_analysis", "scope_generation", "estimate_generation"
+  model         String // e.g., "claude-3-5-sonnet-20241022"
+  inputTokens   Int
+  outputTokens  Int
+  totalTokens   Int
+  estimatedCost Decimal    @db.Decimal(10, 6) // Cost in USD
+  metadata      Json? // Store additional context (photo count, etc.)
+  createdAt     DateTime   @default(now())
+
+  @@index([contractorId, createdAt])
+  @@index([leadId])
+  @@index([estimateId])
+  @@index([operation, createdAt])
 }

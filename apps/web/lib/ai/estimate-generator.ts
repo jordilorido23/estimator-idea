@@ -1,27 +1,7 @@
 import { getAnthropicClient, AI_MODELS } from '../ai';
-import type { ScopeOfWork } from './scope-generator';
-
-export type EstimateLineItem = {
-  category: string;
-  description: string;
-  quantity: number;
-  unit: string; // e.g., 'sq ft', 'linear ft', 'each', 'hour'
-  unitCost: number;
-  totalCost: number;
-  notes?: string;
-};
-
-export type GeneratedEstimate = {
-  lineItems: EstimateLineItem[];
-  subtotal: number;
-  marginPercentage: number;
-  marginAmount: number;
-  contingencyPercentage: number;
-  contingencyAmount: number;
-  total: number;
-  assumptions: string[];
-  exclusions: string[];
-};
+import type { ScopeOfWork } from './schemas';
+import { retryWithBackoff, AIError } from './retry';
+import { GeneratedEstimateSchema, type GeneratedEstimate, type EstimateLineItem } from './schemas';
 
 /**
  * Generate a detailed estimate from scope of work and pricing preferences
@@ -99,29 +79,52 @@ Respond ONLY with valid JSON:
 }`;
 
   try {
-    const response = await client.messages.create({
-      model: AI_MODELS.SONNET,
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    });
+    // Wrap API call with retry logic
+    const response = await retryWithBackoff(
+      () =>
+        client.messages.create({
+          model: AI_MODELS.SONNET,
+          max_tokens: 4096,
+          messages: [
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+        }),
+      {
+        maxAttempts: 3,
+        timeoutMs: 60000, // Estimate generation can be complex
+        initialDelayMs: 1000,
+      }
+    );
 
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
-      throw new Error('No text response from Claude');
+      throw new AIError('No text response from Claude', 'NO_TEXT_RESPONSE', false);
     }
 
     // Extract JSON from the response
     const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error('No JSON found in Claude response');
+      throw new AIError('No JSON found in Claude response', 'NO_JSON_RESPONSE', false);
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as {
+    // Parse JSON
+    let parsedData: unknown;
+    try {
+      parsedData = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      throw new AIError(
+        'Invalid JSON in Claude response',
+        'INVALID_JSON',
+        false,
+        parseError
+      );
+    }
+
+    // Build the complete estimate object with calculated totals
+    const parsed = parsedData as {
       lineItems: EstimateLineItem[];
       assumptions: string[];
       exclusions: string[];
@@ -145,10 +148,38 @@ Respond ONLY with valid JSON:
       exclusions: parsed.exclusions,
     };
 
-    return estimate;
+    // Validate complete estimate with Zod schema
+    const validationResult = GeneratedEstimateSchema.safeParse(estimate);
+    if (!validationResult.success) {
+      console.error('Estimate generation validation failed:', {
+        errors: validationResult.error.flatten(),
+        rawResponse: textContent.text,
+      });
+      throw new AIError(
+        `Invalid estimate structure from Claude: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+        'INVALID_STRUCTURE',
+        false
+      );
+    }
+
+    return validationResult.data;
   } catch (error) {
+    if (error instanceof AIError) {
+      console.error('Estimate generation failed:', {
+        code: error.code,
+        message: error.message,
+        retryable: error.retryable,
+      });
+      throw error;
+    }
+
     console.error('Estimate generation error:', error);
-    throw new Error(`Failed to generate estimate: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new AIError(
+      `Failed to generate estimate: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      'ESTIMATE_GENERATION_FAILED',
+      false,
+      error
+    );
   }
 }
 

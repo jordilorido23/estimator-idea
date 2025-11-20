@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, TradeType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -9,11 +9,11 @@ const demoContractors = [
     email: 'intake@scopeguard.builders',
     phone: '555-222-0148',
     trades: [
-      'Kitchen remodel',
-      'Bathroom remodel',
-      'ADU or addition',
-      'Exterior improvements',
-      'Insurance restoration'
+      TradeType.KITCHEN,
+      TradeType.BATH,
+      TradeType.ADDITION,
+      TradeType.SIDING,
+      TradeType.ROOFING
     ]
   }
 ];

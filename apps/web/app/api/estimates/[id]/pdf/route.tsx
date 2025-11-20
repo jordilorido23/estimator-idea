@@ -5,7 +5,7 @@ import { prisma } from '@scopeguard/db/client';
 import { ProposalDocument } from '@/lib/pdf/proposal-generator';
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {

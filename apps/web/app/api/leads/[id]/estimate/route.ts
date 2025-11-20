@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { prisma, Prisma } from '@scopeguard/db';
 import { generateEstimate } from '@/lib/ai/estimate-generator';
+import { verifyLeadOwnership, handleAuthError } from '@/lib/auth-helpers';
+import { checkRateLimit } from '@/lib/rate-limit';
+import { ratelimit } from '@/lib/rate-limit';
 
 type RouteContext = {
   params: {
@@ -15,10 +18,33 @@ type RouteContext = {
 export async function POST(request: Request, context: RouteContext) {
   try {
     const { id: leadId } = context.params;
+
+    // Check authorization - verify user owns this lead
+    const { lead, contractorUser } = await verifyLeadOwnership(leadId);
+
+    // Rate limiting - prevent AI cost abuse
+    const identifier = `estimate:${contractorUser.contractorId}`;
+    const rateLimitResult = await checkRateLimit(ratelimit.moderate, identifier);
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded. Please try again later.',
+          retryAfter: rateLimitResult.reset,
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': rateLimitResult.reset.toString(),
+          },
+        }
+      );
+    }
+
     const body = await request.json();
 
     // Fetch lead with takeoff data
-    const lead = await prisma.lead.findUnique({
+    const leadWithTakeoffs = await prisma.lead.findUnique({
       where: { id: leadId },
       include: {
         takeoffs: {
@@ -28,11 +54,11 @@ export async function POST(request: Request, context: RouteContext) {
       },
     });
 
-    if (!lead) {
+    if (!leadWithTakeoffs) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
-    const latestTakeoff = lead.takeoffs[0];
+    const latestTakeoff = leadWithTakeoffs.takeoffs[0];
     if (!latestTakeoff) {
       return NextResponse.json(
         { error: 'No analysis available. Run photo analysis first.' },
@@ -55,7 +81,7 @@ export async function POST(request: Request, context: RouteContext) {
     // Generate estimate using AI
     const estimate = await generateEstimate({
       scopeOfWork,
-      tradeType: lead.tradeType,
+      tradeType: leadWithTakeoffs.tradeType,
       pricingGuidelines: body.pricingGuidelines,
     });
 
@@ -63,7 +89,7 @@ export async function POST(request: Request, context: RouteContext) {
     const savedEstimate = await prisma.estimate.create({
       data: {
         leadId,
-        contractorId: lead.contractorId,
+        contractorId: leadWithTakeoffs.contractorId,
         lineItems: estimate.lineItems,
         subtotal: new Prisma.Decimal(estimate.subtotal),
         margin: new Prisma.Decimal(estimate.marginPercentage),
@@ -93,6 +119,12 @@ export async function POST(request: Request, context: RouteContext) {
       },
     });
   } catch (error) {
+    // Handle authorization errors
+    const authErrorResponse = handleAuthError(error);
+    if (authErrorResponse.status !== 500) {
+      return authErrorResponse;
+    }
+
     console.error('Estimate generation error:', error);
     return NextResponse.json(
       {
@@ -111,6 +143,10 @@ export async function POST(request: Request, context: RouteContext) {
 export async function PATCH(request: Request, context: RouteContext) {
   try {
     const { id: leadId } = context.params;
+
+    // Check authorization - verify user owns this lead
+    await verifyLeadOwnership(leadId);
+
     const { searchParams } = new URL(request.url);
     const estimateId = searchParams.get('estimateId');
 
@@ -172,6 +208,12 @@ export async function PATCH(request: Request, context: RouteContext) {
       estimate: updatedEstimate,
     });
   } catch (error) {
+    // Handle authorization errors
+    const authErrorResponse = handleAuthError(error);
+    if (authErrorResponse.status !== 500) {
+      return authErrorResponse;
+    }
+
     console.error('Estimate update error:', error);
     return NextResponse.json(
       {

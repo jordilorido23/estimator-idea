@@ -23,11 +23,12 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@prisma/client": "^5.14.0"
+    "@prisma/client": "^5.22.0"
   },
   "devDependencies": {
     "@scopeguard/eslint-config": "workspace:*",
     "@scopeguard/typescript-config": "workspace:*",
+    "@types/node": "^20.12.12",
     "eslint": "^8.57.0",
     "prisma": "^5.14.0",
     "tsx": "^4.15.0",

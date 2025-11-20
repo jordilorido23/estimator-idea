@@ -1,17 +1,7 @@
 import { getAnthropicClient, AI_MODELS } from '../ai';
-import type { PhotoAnalysis } from './photo-analyzer';
-
-export type ScopeOfWork = {
-  summary: string;
-  lineItems: Array<{
-    category: string;
-    description: string;
-    notes?: string;
-  }>;
-  potentialIssues: string[];
-  missingInformation: string[];
-  recommendations: string[];
-};
+import type { PhotoAnalysis } from './schemas';
+import { retryWithBackoff, AIError } from './retry';
+import { ScopeOfWorkSchema, type ScopeOfWork } from './schemas';
 
 /**
  * Generate a detailed scope of work from lead data and photo analysis
@@ -78,38 +68,81 @@ Respond ONLY with valid JSON:
 }`;
 
   try {
-    const response = await client.messages.create({
-      model: AI_MODELS.SONNET,
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    });
+    // Wrap API call with retry logic
+    const response = await retryWithBackoff(
+      () =>
+        client.messages.create({
+          model: AI_MODELS.SONNET,
+          max_tokens: 4096,
+          messages: [
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+        }),
+      {
+        maxAttempts: 3,
+        timeoutMs: 60000, // Scope generation can be complex
+        initialDelayMs: 1000,
+      }
+    );
 
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
-      throw new Error('No text response from Claude');
+      throw new AIError('No text response from Claude', 'NO_TEXT_RESPONSE', false);
     }
 
     // Extract JSON from the response
     const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error('No JSON found in Claude response');
+      throw new AIError('No JSON found in Claude response', 'NO_JSON_RESPONSE', false);
     }
 
-    const scope = JSON.parse(jsonMatch[0]) as ScopeOfWork;
-
-    // Validate structure
-    if (!scope.summary || !Array.isArray(scope.lineItems)) {
-      throw new Error('Invalid scope structure from Claude');
+    // Parse JSON
+    let parsedData: unknown;
+    try {
+      parsedData = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      throw new AIError(
+        'Invalid JSON in Claude response',
+        'INVALID_JSON',
+        false,
+        parseError
+      );
     }
 
-    return scope;
+    // Validate with Zod schema
+    const validationResult = ScopeOfWorkSchema.safeParse(parsedData);
+    if (!validationResult.success) {
+      console.error('Scope generation validation failed:', {
+        errors: validationResult.error.flatten(),
+        rawResponse: textContent.text,
+      });
+      throw new AIError(
+        `Invalid scope structure from Claude: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+        'INVALID_STRUCTURE',
+        false
+      );
+    }
+
+    return validationResult.data;
   } catch (error) {
+    if (error instanceof AIError) {
+      console.error('Scope generation failed:', {
+        code: error.code,
+        message: error.message,
+        retryable: error.retryable,
+      });
+      throw error;
+    }
+
     console.error('Scope generation error:', error);
-    throw new Error(`Failed to generate scope: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new AIError(
+      `Failed to generate scope: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      'SCOPE_GENERATION_FAILED',
+      false,
+      error
+    );
   }
 }

@@ -3,10 +3,10 @@ import { prisma } from '@scopeguard/db';
 import { z } from 'zod';
 
 import { leadIntakeSchema } from '@/lib/validators/lead-intake';
-import { analyzeMultiplePhotos } from '@/lib/ai/photo-analyzer';
-import { generateScopeOfWork } from '@/lib/ai/scope-generator';
 import { sendNewLeadNotification, sendHomeownerConfirmation } from '@/lib/email';
 import { env } from '@/src/env';
+import { ratelimit, getRateLimitIdentifier, checkRateLimit } from '@/lib/rate-limit';
+import { inngest } from '@/lib/inngest/client';
 
 const leadSubmissionSchema = leadIntakeSchema.extend({
   contractorSlug: z.string().min(1, 'Contractor slug is required')
@@ -14,6 +14,24 @@ const leadSubmissionSchema = leadIntakeSchema.extend({
 
 export async function POST(request: Request) {
   try {
+    // Apply strict rate limiting to prevent abuse
+    // This is a public endpoint (homeowners submit leads), so we rate limit by IP
+    const identifier = getRateLimitIdentifier(request);
+    const rateLimitResult = await checkRateLimit(ratelimit.strict, identifier);
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: 'Too many requests. Please try again later.',
+          resetTime: rateLimitResult.resetTime,
+        },
+        {
+          status: 429,
+          headers: rateLimitResult.headers,
+        }
+      );
+    }
+
     const body = await request.json();
     const { contractorSlug, photos = [], ...payload } = leadSubmissionSchema.parse(body);
 
@@ -68,22 +86,30 @@ export async function POST(request: Request) {
       console.error('Email notification failed for lead', lead.id, error);
     });
 
-    // Trigger async photo analysis if photos were uploaded
+    // Trigger background job for photo analysis if photos were uploaded
     if (photos.length > 0) {
-      // Run analysis asynchronously (don't await - return response immediately)
-      analyzeLeadPhotos(lead.id, photos.map((p) => p.url), {
-        homeownerName: payload.homeownerName,
-        address: payload.address,
-        tradeType: payload.projectType,
-        budget: payload.budget,
-        timeline: payload.timeline,
-        notes: payload.description,
-      }).catch((error) => {
-        console.error('Photo analysis failed for lead', lead.id, error);
+      // Send event to Inngest to process photos in background
+      // This is non-blocking and has automatic retry logic
+      await inngest.send({
+        name: 'lead/photo.analyze',
+        data: {
+          leadId: lead.id,
+          photoUrls: photos.map((p) => p.url),
+          leadData: {
+            homeownerName: payload.homeownerName,
+            address: payload.address,
+            tradeType: payload.projectType,
+            budget: payload.budget,
+            timeline: payload.timeline,
+            notes: payload.description,
+          },
+        },
       });
+
+      console.log(`Queued photo analysis job for lead ${lead.id} with ${photos.length} photos`);
     }
 
-    return NextResponse.json({ lead });
+    return NextResponse.json({ lead }, { headers: rateLimitResult.headers });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.flatten() }, { status: 422 });
@@ -91,97 +117,6 @@ export async function POST(request: Request) {
     console.error('Lead submission error', error);
     return NextResponse.json({ error: 'Unable to save lead' }, { status: 500 });
   }
-}
-
-/**
- * Analyze photos for a lead and store results
- * This runs asynchronously after lead creation
- */
-async function analyzeLeadPhotos(
-  leadId: string,
-  photoUrls: string[],
-  leadData: {
-    homeownerName: string;
-    address: string;
-    tradeType: string;
-    budget?: number;
-    timeline?: string;
-    notes?: string;
-  }
-) {
-  try {
-    console.log(`Starting photo analysis for lead ${leadId} with ${photoUrls.length} photos`);
-
-    // Analyze all photos
-    const analysisResults = await analyzeMultiplePhotos(photoUrls);
-
-    // Generate scope of work
-    const scope = await generateScopeOfWork({
-      leadData,
-      photoAnalyses: analysisResults.photos.map((p) => p.analysis),
-    });
-
-    // Store results in Takeoff table
-    await prisma.takeoff.create({
-      data: {
-        leadId,
-        tradeType: leadData.tradeType,
-        provider: 'anthropic',
-        version: 'claude-3-5-sonnet-20241022',
-        confidence: analysisResults.summary.overallConfidence,
-        data: {
-          photoAnalyses: analysisResults.photos,
-          summary: analysisResults.summary,
-          scopeOfWork: scope,
-          analyzedAt: new Date().toISOString(),
-        },
-      },
-    });
-
-    // Update lead score based on analysis quality
-    const score = calculateLeadScore(analysisResults.summary, leadData);
-    await prisma.lead.update({
-      where: { id: leadId },
-      data: { score },
-    });
-
-    console.log(`Photo analysis complete for lead ${leadId}, score: ${score}`);
-  } catch (error) {
-    console.error(`Photo analysis error for lead ${leadId}:`, error);
-    throw error;
-  }
-}
-
-/**
- * Calculate a lead quality score (0-100)
- * Higher scores indicate better quality leads
- */
-function calculateLeadScore(
-  summary: { overallConfidence: number; totalWorkItems: number; hasSafetyHazards: boolean },
-  leadData: { budget?: number; timeline?: string; notes?: string }
-): number {
-  let score = 0;
-
-  // Photo analysis confidence (0-40 points)
-  score += summary.overallConfidence * 40;
-
-  // Completeness of work items (0-20 points)
-  score += Math.min(summary.totalWorkItems / 5, 1) * 20;
-
-  // Budget provided (10 points)
-  if (leadData.budget) score += 10;
-
-  // Timeline provided (10 points)
-  if (leadData.timeline) score += 10;
-
-  // Description provided (10 points)
-  if (leadData.notes && leadData.notes.length > 20) score += 10;
-
-  // Safety hazards decrease score (up to -10 points)
-  if (summary.hasSafetyHazards) score -= 10;
-
-  // Clamp to 0-100
-  return Math.max(0, Math.min(100, Math.round(score)));
 }
 
 /**

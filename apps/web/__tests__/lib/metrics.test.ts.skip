@@ -1,0 +1,536 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { calculateAccuracyMetrics, getEstimatesWithMetrics, getAccuracyTrends } from '@/lib/metrics';
+import { prisma } from '@scopeguard/db';
+
+vi.mock('@scopeguard/db');
+
+// Mock Decimal class for testing
+class Decimal {
+  value: number;
+
+  constructor(value: number | string) {
+    this.value = typeof value === 'string' ? parseFloat(value) : value;
+  }
+
+  toNumber() {
+    return this.value;
+  }
+
+  minus(other: Decimal | number) {
+    const otherValue = other instanceof Decimal ? other.value : other;
+    return new Decimal(this.value - otherValue);
+  }
+
+  div(other: Decimal | number) {
+    const otherValue = other instanceof Decimal ? other.value : other;
+    return new Decimal(this.value / otherValue);
+  }
+
+  mul(other: Decimal | number) {
+    const otherValue = other instanceof Decimal ? other.value : other;
+    return new Decimal(this.value * otherValue);
+  }
+}
+
+describe('Metrics Module', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('calculateAccuracyMetrics', () => {
+    it('should calculate metrics correctly with multiple completed estimates', async () => {
+      const mockEstimates = [
+        {
+          total: new Decimal(10000),
+          actualCost: new Decimal(10500),
+          variance: new Decimal(500),
+          variancePercent: new Decimal(5),
+          projectOutcome: 'WON',
+        },
+        {
+          total: new Decimal(15000),
+          actualCost: new Decimal(14500),
+          variance: new Decimal(-500),
+          variancePercent: new Decimal(-3.33),
+          projectOutcome: 'WON',
+        },
+        {
+          total: new Decimal(20000),
+          actualCost: new Decimal(20200),
+          variance: new Decimal(200),
+          variancePercent: new Decimal(1),
+          projectOutcome: 'WON',
+        },
+        {
+          total: new Decimal(8000),
+          actualCost: null,
+          variance: null,
+          variancePercent: null,
+          projectOutcome: 'LOST',
+        },
+      ];
+
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue(mockEstimates as any);
+
+      const result = await calculateAccuracyMetrics('contractor_123');
+
+      expect(result.totalEstimates).toBe(4);
+      expect(result.completedEstimates).toBe(4);
+      expect(result.wonEstimates).toBe(3);
+      expect(result.lostEstimates).toBe(1);
+
+      // Average variance: (500 + (-500) + 200) / 3 = 66.67
+      expect(result.averageVariance).toBeCloseTo(66.67, 1);
+
+      // Average variance percent (absolute): (5 + 3.33 + 1) / 3 = 3.11
+      expect(result.averageVariancePercent).toBeCloseTo(3.11, 1);
+
+      // All 3 estimates with actual costs are within 10%
+      expect(result.estimatesWithinTarget).toBe(3);
+      expect(result.accuracyRate).toBe(100);
+
+      // Total estimated: 10000 + 15000 + 20000 = 45000
+      expect(result.totalEstimatedValue).toBe(45000);
+
+      // Total actual: 10500 + 14500 + 20200 = 45200
+      expect(result.totalActualValue).toBe(45200);
+    });
+
+    it('should handle estimates with variance outside 10% target', async () => {
+      const mockEstimates = [
+        {
+          total: new Decimal(10000),
+          actualCost: new Decimal(12000),
+          variance: new Decimal(2000),
+          variancePercent: new Decimal(20), // Outside 10%
+          projectOutcome: 'WON',
+        },
+        {
+          total: new Decimal(15000),
+          actualCost: new Decimal(15500),
+          variance: new Decimal(500),
+          variancePercent: new Decimal(3.33), // Within 10%
+          projectOutcome: 'WON',
+        },
+      ];
+
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue(mockEstimates as any);
+
+      const result = await calculateAccuracyMetrics('contractor_123');
+
+      expect(result.estimatesWithinTarget).toBe(1);
+      expect(result.accuracyRate).toBe(50); // 1 out of 2
+    });
+
+    it('should return zero metrics when no estimates exist', async () => {
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue([]);
+
+      const result = await calculateAccuracyMetrics('contractor_123');
+
+      expect(result.totalEstimates).toBe(0);
+      expect(result.completedEstimates).toBe(0);
+      expect(result.wonEstimates).toBe(0);
+      expect(result.lostEstimates).toBe(0);
+      expect(result.averageVariance).toBe(0);
+      expect(result.averageVariancePercent).toBe(0);
+      expect(result.estimatesWithinTarget).toBe(0);
+      expect(result.accuracyRate).toBe(0);
+      expect(result.totalEstimatedValue).toBe(0);
+      expect(result.totalActualValue).toBe(0);
+    });
+
+    it('should handle estimates with no actual costs', async () => {
+      const mockEstimates = [
+        {
+          total: new Decimal(10000),
+          actualCost: null,
+          variance: null,
+          variancePercent: null,
+          projectOutcome: 'LOST',
+        },
+        {
+          total: new Decimal(15000),
+          actualCost: null,
+          variance: null,
+          variancePercent: null,
+          projectOutcome: 'CANCELLED',
+        },
+      ];
+
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue(mockEstimates as any);
+
+      const result = await calculateAccuracyMetrics('contractor_123');
+
+      expect(result.totalEstimates).toBe(2);
+      expect(result.completedEstimates).toBe(1); // Only WON and LOST count
+      expect(result.averageVariance).toBe(0);
+      expect(result.averageVariancePercent).toBe(0);
+      expect(result.estimatesWithinTarget).toBe(0);
+      expect(result.accuracyRate).toBe(0);
+      expect(result.totalEstimatedValue).toBe(0);
+      expect(result.totalActualValue).toBe(0);
+    });
+
+    it('should handle negative variance correctly', async () => {
+      const mockEstimates = [
+        {
+          total: new Decimal(10000),
+          actualCost: new Decimal(8000),
+          variance: new Decimal(-2000),
+          variancePercent: new Decimal(-20),
+          projectOutcome: 'WON',
+        },
+      ];
+
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue(mockEstimates as any);
+
+      const result = await calculateAccuracyMetrics('contractor_123');
+
+      expect(result.averageVariance).toBe(-2000);
+      // Absolute value for percentage
+      expect(result.averageVariancePercent).toBe(20);
+      // Outside 10% target
+      expect(result.estimatesWithinTarget).toBe(0);
+      expect(result.accuracyRate).toBe(0);
+    });
+
+    it('should correctly filter by contractor ID', async () => {
+      const mockFindMany = vi.mocked(prisma.estimate.findMany);
+      mockFindMany.mockResolvedValue([]);
+
+      await calculateAccuracyMetrics('contractor_456');
+
+      expect(mockFindMany).toHaveBeenCalledWith({
+        where: {
+          contractorId: 'contractor_456',
+          projectOutcome: {
+            not: null,
+          },
+        },
+        select: expect.any(Object),
+      });
+    });
+
+    it('should handle exactly 10% variance as within target', async () => {
+      const mockEstimates = [
+        {
+          total: new Decimal(10000),
+          actualCost: new Decimal(11000),
+          variance: new Decimal(1000),
+          variancePercent: new Decimal(10), // Exactly 10%
+          projectOutcome: 'WON',
+        },
+      ];
+
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue(mockEstimates as any);
+
+      const result = await calculateAccuracyMetrics('contractor_123');
+
+      expect(result.estimatesWithinTarget).toBe(1);
+      expect(result.accuracyRate).toBe(100);
+    });
+
+    it('should handle mixed project outcomes', async () => {
+      const mockEstimates = [
+        {
+          total: new Decimal(10000),
+          actualCost: new Decimal(10500),
+          variance: new Decimal(500),
+          variancePercent: new Decimal(5),
+          projectOutcome: 'WON',
+        },
+        {
+          total: new Decimal(15000),
+          actualCost: null,
+          variance: null,
+          variancePercent: null,
+          projectOutcome: 'LOST',
+        },
+        {
+          total: new Decimal(20000),
+          actualCost: null,
+          variance: null,
+          variancePercent: null,
+          projectOutcome: 'IN_PROGRESS',
+        },
+        {
+          total: new Decimal(8000),
+          actualCost: null,
+          variance: null,
+          variancePercent: null,
+          projectOutcome: 'CANCELLED',
+        },
+      ];
+
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue(mockEstimates as any);
+
+      const result = await calculateAccuracyMetrics('contractor_123');
+
+      expect(result.wonEstimates).toBe(1);
+      expect(result.lostEstimates).toBe(1);
+      // Only WON and LOST count as completed
+      expect(result.completedEstimates).toBe(2);
+    });
+  });
+
+  describe('getEstimatesWithMetrics', () => {
+    it('should return estimates with converted Decimal values', async () => {
+      const mockEstimates = [
+        {
+          id: 'est_1',
+          leadId: 'lead_1',
+          total: new Decimal(10000),
+          actualCost: new Decimal(10500),
+          variance: new Decimal(500),
+          variancePercent: new Decimal(5),
+          projectOutcome: 'WON',
+          completedAt: new Date('2024-02-01'),
+          createdAt: new Date('2024-01-15'),
+          lead: {
+            homeownerName: 'John Doe',
+            address: '123 Main St',
+          },
+        },
+      ];
+
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue(mockEstimates as any);
+
+      const result = await getEstimatesWithMetrics('contractor_123');
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        id: 'est_1',
+        leadId: 'lead_1',
+        homeownerName: 'John Doe',
+        address: '123 Main St',
+        total: 10000,
+        actualCost: 10500,
+        variance: 500,
+        variancePercent: 5,
+        projectOutcome: 'WON',
+        completedAt: mockEstimates[0].completedAt,
+        createdAt: mockEstimates[0].createdAt,
+      });
+    });
+
+    it('should handle null values correctly', async () => {
+      const mockEstimates = [
+        {
+          id: 'est_1',
+          leadId: 'lead_1',
+          total: new Decimal(10000),
+          actualCost: null,
+          variance: null,
+          variancePercent: null,
+          projectOutcome: 'LOST',
+          completedAt: null,
+          createdAt: new Date('2024-01-15'),
+          lead: {
+            homeownerName: 'Jane Smith',
+            address: '456 Oak Ave',
+          },
+        },
+      ];
+
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue(mockEstimates as any);
+
+      const result = await getEstimatesWithMetrics('contractor_123');
+
+      expect(result[0].actualCost).toBeNull();
+      expect(result[0].variance).toBeNull();
+      expect(result[0].variancePercent).toBeNull();
+      expect(result[0].completedAt).toBeNull();
+    });
+
+    it('should apply outcome filter when provided', async () => {
+      const mockFindMany = vi.mocked(prisma.estimate.findMany);
+      mockFindMany.mockResolvedValue([]);
+
+      await getEstimatesWithMetrics('contractor_123', { outcomeFilter: 'WON' });
+
+      expect(mockFindMany).toHaveBeenCalledWith({
+        where: {
+          contractorId: 'contractor_123',
+          projectOutcome: 'WON',
+        },
+        select: expect.any(Object),
+        orderBy: { createdAt: 'desc' },
+        take: undefined,
+      });
+    });
+
+    it('should apply limit when provided', async () => {
+      const mockFindMany = vi.mocked(prisma.estimate.findMany);
+      mockFindMany.mockResolvedValue([]);
+
+      await getEstimatesWithMetrics('contractor_123', { limit: 10 });
+
+      expect(mockFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          take: 10,
+        })
+      );
+    });
+
+    it('should order results by createdAt descending', async () => {
+      const mockFindMany = vi.mocked(prisma.estimate.findMany);
+      mockFindMany.mockResolvedValue([]);
+
+      await getEstimatesWithMetrics('contractor_123');
+
+      expect(mockFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: { createdAt: 'desc' },
+        })
+      );
+    });
+  });
+
+  describe('getAccuracyTrends', () => {
+    it('should group estimates by month and calculate averages', async () => {
+      const mockEstimates = [
+        {
+          variancePercent: new Decimal(5),
+          completedAt: new Date('2024-01-15'),
+        },
+        {
+          variancePercent: new Decimal(-3),
+          completedAt: new Date('2024-01-20'),
+        },
+        {
+          variancePercent: new Decimal(7),
+          completedAt: new Date('2024-02-10'),
+        },
+      ];
+
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue(mockEstimates as any);
+
+      const result = await getAccuracyTrends('contractor_123', 6);
+
+      expect(result).toHaveLength(2);
+
+      // January: (5 + 3) / 2 = 4 (absolute values)
+      const janTrend = result.find(r => r.month === '2024-01');
+      expect(janTrend).toBeDefined();
+      expect(janTrend?.averageVariancePercent).toBe(4);
+      expect(janTrend?.estimatesCount).toBe(2);
+
+      // February: 7 / 1 = 7
+      const febTrend = result.find(r => r.month === '2024-02');
+      expect(febTrend).toBeDefined();
+      expect(febTrend?.averageVariancePercent).toBe(7);
+      expect(febTrend?.estimatesCount).toBe(1);
+    });
+
+    it('should filter by date range based on months parameter', async () => {
+      const mockFindMany = vi.mocked(prisma.estimate.findMany);
+      mockFindMany.mockResolvedValue([]);
+
+      await getAccuracyTrends('contractor_123', 3);
+
+      const callArgs = mockFindMany.mock.calls[0][0];
+      expect(callArgs.where.completedAt?.gte).toBeInstanceOf(Date);
+    });
+
+    it('should default to 6 months if not specified', async () => {
+      const mockFindMany = vi.mocked(prisma.estimate.findMany);
+      mockFindMany.mockResolvedValue([]);
+
+      await getAccuracyTrends('contractor_123');
+
+      expect(mockFindMany).toHaveBeenCalled();
+    });
+
+    it('should handle empty results', async () => {
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue([]);
+
+      const result = await getAccuracyTrends('contractor_123', 6);
+
+      expect(result).toEqual([]);
+    });
+
+    it('should use absolute values for variance percentages', async () => {
+      const mockEstimates = [
+        {
+          variancePercent: new Decimal(-15),
+          completedAt: new Date('2024-01-15'),
+        },
+        {
+          variancePercent: new Decimal(-10),
+          completedAt: new Date('2024-01-20'),
+        },
+      ];
+
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue(mockEstimates as any);
+
+      const result = await getAccuracyTrends('contractor_123', 6);
+
+      // Average: (15 + 10) / 2 = 12.5
+      expect(result[0].averageVariancePercent).toBe(12.5);
+    });
+
+    it('should only include estimates with actual costs and completion dates', async () => {
+      const mockFindMany = vi.mocked(prisma.estimate.findMany);
+      mockFindMany.mockResolvedValue([]);
+
+      await getAccuracyTrends('contractor_123', 6);
+
+      expect(mockFindMany).toHaveBeenCalledWith({
+        where: {
+          contractorId: 'contractor_123',
+          projectOutcome: {
+            not: null,
+          },
+          actualCost: {
+            not: null,
+          },
+          completedAt: {
+            gte: expect.any(Date),
+          },
+        },
+        select: {
+          variancePercent: true,
+          completedAt: true,
+        },
+        orderBy: {
+          completedAt: 'asc',
+        },
+      });
+    });
+
+    it('should format month keys as YYYY-MM', async () => {
+      const mockEstimates = [
+        {
+          variancePercent: new Decimal(5),
+          completedAt: new Date('2024-03-25'),
+        },
+      ];
+
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue(mockEstimates as any);
+
+      const result = await getAccuracyTrends('contractor_123', 6);
+
+      expect(result[0].month).toBe('2024-03');
+    });
+
+    it('should handle null completedAt gracefully', async () => {
+      const mockEstimates = [
+        {
+          variancePercent: new Decimal(5),
+          completedAt: new Date('2024-01-15'),
+        },
+        {
+          variancePercent: new Decimal(7),
+          completedAt: null, // Should be skipped
+        },
+      ];
+
+      vi.mocked(prisma.estimate.findMany).mockResolvedValue(mockEstimates as any);
+
+      const result = await getAccuracyTrends('contractor_123', 6);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].estimatesCount).toBe(1);
+    });
+  });
+});

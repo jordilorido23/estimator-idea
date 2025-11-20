@@ -1,8 +1,11 @@
 import { auth } from '@clerk/nextjs/server';
 import { redirect, notFound } from 'next/navigation';
 import { prisma } from '@scopeguard/db';
+import { StatusBadge } from '@scopeguard/ui';
 import Link from 'next/link';
 import { PdfDownloadButton } from './pdf-download-button';
+import { EstimateFeedbackForm } from '@/components/estimate-feedback-form';
+import { AIReviewPanel } from '@/components/ai-review-panel';
 
 type PageProps = {
   params: {
@@ -76,21 +79,7 @@ export default async function EstimateDetailPage({ params }: PageProps) {
             {estimate.lead.homeownerName} • {estimate.lead.address}
           </p>
         </div>
-        <div>
-          <span
-            className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${
-              estimate.status === 'DRAFT'
-                ? 'bg-gray-100 text-gray-800'
-                : estimate.status === 'SENT'
-                  ? 'bg-blue-100 text-blue-800'
-                  : estimate.status === 'ACCEPTED'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-red-100 text-red-800'
-            }`}
-          >
-            {estimate.status}
-          </span>
-        </div>
+        <StatusBadge status={estimate.status} size="lg" />
       </div>
 
       {/* Scope of work reference */}
@@ -211,6 +200,22 @@ export default async function EstimateDetailPage({ params }: PageProps) {
           </ul>
         </div>
       )}
+
+      {/* AI Takeoff Review */}
+      {latestTakeoff && (
+        <AIReviewPanel takeoffId={latestTakeoff.id} />
+      )}
+
+      {/* Project Feedback Form */}
+      <EstimateFeedbackForm
+        estimateId={estimate.id}
+        initialValues={{
+          projectOutcome: estimate.projectOutcome || undefined,
+          actualCost: estimate.actualCost?.toNumber(),
+          completedAt: estimate.completedAt?.toISOString(),
+          feedbackNotes: estimate.feedbackNotes || undefined,
+        }}
+      />
     </div>
   );
 }
