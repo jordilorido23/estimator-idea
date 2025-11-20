@@ -2,34 +2,41 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@scopeguard/db';
 import { analyzeTakeoffAccuracy } from '@/lib/ai/review-analyzer';
+import { getAuth } from '@/lib/test-auth-helpers';
 
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
+    const authResult = await getAuth();
+    if (!authResult.userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const takeoffId = params.id;
+
+    // Get user email from auth
+    const userEmail = authResult.sessionClaims?.email as string | undefined;
+    if (!userEmail) {
+      return NextResponse.json({ error: 'User email not found' }, { status: 401 });
+    }
+
+    // Get contractor user
+    const contractorUser = await prisma.contractorUser.findUnique({
+      where: { email: userEmail },
+    });
+
+    if (!contractorUser) {
+      return NextResponse.json({ error: 'Contractor user not found' }, { status: 403 });
+    }
 
     // Verify takeoff exists and belongs to contractor
     const takeoff = await prisma.takeoff.findFirst({
       where: {
         id: takeoffId,
         lead: {
-          contractorId: {
-            not: null,
-          },
-          contractor: {
-            users: {
-              some: {
-                clerkUserId: userId,
-              },
-            },
-          },
+          contractorId: contractorUser.contractorId,
         },
       },
       include: {

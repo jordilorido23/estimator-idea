@@ -314,7 +314,7 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
                 <FormItem>
                   <FormLabel>Full name</FormLabel>
                   <FormControl>
-                    <Input placeholder="Alex Taylor" autoComplete="name" {...field} />
+                    <Input data-testid="homeowner-name" placeholder="Alex Taylor" autoComplete="name" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -327,7 +327,7 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input placeholder="alex@example.com" type="email" autoComplete="email" {...field} />
+                    <Input data-testid="homeowner-email" placeholder="alex@example.com" type="email" autoComplete="email" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -342,7 +342,7 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
                 <FormItem>
                   <FormLabel>Phone</FormLabel>
                   <FormControl>
-                    <Input placeholder="(555) 123-4567" type="tel" autoComplete="tel" {...field} />
+                    <Input data-testid="homeowner-phone" placeholder="(555) 123-4567" type="tel" autoComplete="tel" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -355,7 +355,7 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
                 <FormItem>
                   <FormLabel>Project address</FormLabel>
                   <FormControl>
-                    <Input placeholder="123 Market Street, Denver" autoComplete="street-address" {...field} />
+                    <Input data-testid="address" placeholder="123 Market Street, Denver" autoComplete="street-address" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -372,7 +372,7 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
                   <FormLabel>Project type</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value || undefined}>
                     <FormControl>
-                      <SelectTrigger>
+                      <SelectTrigger data-testid="project-type">
                         <SelectValue placeholder="Select project type" />
                       </SelectTrigger>
                     </FormControl>
@@ -397,6 +397,7 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
                     <FormLabel>Rough budget</FormLabel>
                     <FormControl>
                       <Input
+                        data-testid="budget"
                         type="number"
                         inputMode="decimal"
                         placeholder="75000"
@@ -421,7 +422,7 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
                   <FormItem>
                     <FormLabel>Ideal start date</FormLabel>
                     <FormControl>
-                      <Input type="date" value={field.value ?? ''} onChange={(event) => field.onChange(event.target.value || undefined)} />
+                      <Input data-testid="timeline" type="date" value={field.value ?? ''} onChange={(event) => field.onChange(event.target.value || undefined)} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -438,6 +439,7 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
                 <FormLabel>Project details</FormLabel>
                 <FormControl>
                   <Textarea
+                    data-testid="description"
                     placeholder="Share scope, finishes, or constraints we should know about."
                     rows={5}
                     {...field}
@@ -527,7 +529,7 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
             </div>
           ) : null}
 
-          <Button type="submit" className="w-full" disabled={isSubmitting || hasActiveUploads}>
+          <Button data-testid="submit-button" type="submit" className="w-full" disabled={isSubmitting || hasActiveUploads}>
             {isSubmitting ? 'Submitting...' : 'Submit project'}
           </Button>
         </form>

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@scopeguard/db';
 import { auth } from '@clerk/nextjs/server';
+import { getAuth } from '@/lib/test-auth-helpers';
 
 // Schema for creating a document
 const createDocumentSchema = z.object({
@@ -22,17 +23,16 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { userId } = await auth();
+    const authResult = await getAuth();
 
-    if (!userId) {
+    if (!authResult.userId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const user = await auth();
-    const userEmail = user.sessionClaims?.email as string | undefined;
+    const userEmail = authResult.sessionClaims?.email as string | undefined;
 
     if (!userEmail) {
       return NextResponse.json(
@@ -95,17 +95,16 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { userId } = await auth();
+    const authResult = await getAuth();
 
-    if (!userId) {
+    if (!authResult.userId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const user = await auth();
-    const userEmail = user.sessionClaims?.email as string | undefined;
+    const userEmail = authResult.sessionClaims?.email as string | undefined;
 
     if (!userEmail) {
       return NextResponse.json(
@@ -183,17 +182,16 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { userId } = await auth();
+    const authResult = await getAuth();
 
-    if (!userId) {
+    if (!authResult.userId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const user = await auth();
-    const userEmail = user.sessionClaims?.email as string | undefined;
+    const userEmail = authResult.sessionClaims?.email as string | undefined;
 
     if (!userEmail) {
       return NextResponse.json(

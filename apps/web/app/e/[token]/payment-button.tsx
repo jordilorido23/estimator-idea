@@ -43,12 +43,13 @@ export function PaymentButton({ estimateId, amount, contractorName }: PaymentBut
 
   return (
     <Button
+      data-testid="accept-button"
       onClick={handlePayment}
       disabled={isLoading}
       className="w-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
       size="lg"
     >
-      {isLoading ? 'Processing...' : `Pay $${amount.toFixed(2)} Deposit`}
+      {isLoading ? 'Processing...' : `Accept & Pay $${amount.toFixed(2)} Deposit`}
     </Button>
   );
 }

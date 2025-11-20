@@ -3,6 +3,14 @@ import { withSentryConfig } from '@sentry/nextjs';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ['@scopeguard/ui', '@scopeguard/db'],
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'example.com',
+      },
+    ],
+  },
   experimental: {
     serverActions: {
       allowedOrigins: ['localhost']

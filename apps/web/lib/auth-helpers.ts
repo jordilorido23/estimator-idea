@@ -8,6 +8,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@scopeguard/db';
 import { NextResponse } from 'next/server';
+import { getAuth } from './test-auth-helpers';
 
 /**
  * Custom error class for authorization failures
@@ -30,9 +31,10 @@ export class AuthorizationError extends Error {
  * @throws AuthorizationError if not authenticated or user not found
  */
 export async function getAuthenticatedContractorUser() {
-  const { userId } = await auth();
+  // Use mock-aware auth helper
+  const authResult = await getAuth();
 
-  if (!userId) {
+  if (!authResult.userId) {
     throw new AuthorizationError(
       'Authentication required',
       'UNAUTHORIZED',
@@ -40,9 +42,8 @@ export async function getAuthenticatedContractorUser() {
     );
   }
 
-  // Get user email from Clerk
-  const clerkUser = await auth();
-  const userEmail = clerkUser.sessionClaims?.email as string | undefined;
+  // Get user email from session claims
+  const userEmail = authResult.sessionClaims?.email as string | undefined;
 
   if (!userEmail) {
     throw new AuthorizationError(

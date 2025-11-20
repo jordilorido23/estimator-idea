@@ -13,10 +13,11 @@ type LeadWithRelations = Lead & {
 interface LeadsClientProps {
   leads: LeadWithRelations[];
   initialStatus?: string;
+  initialTradeType?: string;
   initialSort: string;
 }
 
-export function LeadsClient({ leads, initialStatus, initialSort }: LeadsClientProps) {
+export function LeadsClient({ leads, initialStatus, initialTradeType, initialSort }: LeadsClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -46,6 +47,8 @@ export function LeadsClient({ leads, initialStatus, initialSort }: LeadsClientPr
         <div className="flex-1">
           <label className="mb-1.5 block text-sm font-medium">Status</label>
           <select
+            name="status"
+            data-testid="status-filter"
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             value={initialStatus || ''}
             onChange={(e) => handleFilterChange('status', e.target.value)}
@@ -59,8 +62,31 @@ export function LeadsClient({ leads, initialStatus, initialSort }: LeadsClientPr
         </div>
 
         <div className="flex-1">
+          <label className="mb-1.5 block text-sm font-medium">Trade Type</label>
+          <select
+            name="tradeType"
+            data-testid="trade-type-filter"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={initialTradeType || ''}
+            onChange={(e) => handleFilterChange('tradeType', e.target.value)}
+          >
+            <option value="">All trades</option>
+            <option value="ROOFING">Roofing</option>
+            <option value="KITCHEN">Kitchen</option>
+            <option value="BATH">Bath</option>
+            <option value="FLOORING">Flooring</option>
+            <option value="PAINTING">Painting</option>
+            <option value="HVAC">HVAC</option>
+            <option value="PLUMBING">Plumbing</option>
+            <option value="ELECTRICAL">Electrical</option>
+          </select>
+        </div>
+
+        <div className="flex-1">
           <label className="mb-1.5 block text-sm font-medium">Sort by</label>
           <select
+            name="sort"
+            data-testid="sort-filter"
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             value={initialSort}
             onChange={(e) => handleFilterChange('sort', e.target.value)}

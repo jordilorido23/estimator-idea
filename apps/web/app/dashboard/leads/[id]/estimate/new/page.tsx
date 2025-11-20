@@ -58,6 +58,8 @@ export default function NewEstimatePage() {
           <div>
             <label className="block text-sm font-medium">Margin Percentage</label>
             <input
+              data-testid="margin"
+              name="margin"
               type="number"
               defaultValue={20}
               className="mt-1 w-full rounded-md border px-3 py-2"
@@ -71,6 +73,8 @@ export default function NewEstimatePage() {
           <div>
             <label className="block text-sm font-medium">Contingency Percentage</label>
             <input
+              data-testid="contingency"
+              name="contingency"
               type="number"
               defaultValue={10}
               className="mt-1 w-full rounded-md border px-3 py-2"
@@ -84,6 +88,8 @@ export default function NewEstimatePage() {
           <div>
             <label className="block text-sm font-medium">Labor Rate ($/hour)</label>
             <input
+              data-testid="labor-rate"
+              name="laborRate"
               type="number"
               defaultValue={75}
               className="mt-1 w-full rounded-md border px-3 py-2"
@@ -107,6 +113,7 @@ export default function NewEstimatePage() {
           onClick={() => router.back()}
           className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted"
           disabled={loading}
+          data-testid="cancel-button"
         >
           Cancel
         </button>
@@ -114,6 +121,7 @@ export default function NewEstimatePage() {
           onClick={handleGenerate}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           disabled={loading}
+          data-testid="generate-estimate-button"
         >
           {loading ? 'Generating...' : 'Generate Estimate'}
         </button>

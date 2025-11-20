@@ -35,7 +35,7 @@ export default async function PublicEstimatePage({ params }: PageProps) {
   if (estimate.expiresAt && new Date() > estimate.expiresAt) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-16">
-        <div className="rounded-lg border border-red-200 bg-red-50 p-8 text-center">
+        <div data-testid="expired-message" className="rounded-lg border border-red-200 bg-red-50 p-8 text-center">
           <h1 className="mb-2 text-2xl font-bold text-red-900">Estimate Expired</h1>
           <p className="text-red-700">
             This estimate expired on {estimate.expiresAt.toLocaleDateString()}. Please contact{' '}
@@ -107,6 +107,61 @@ export default async function PublicEstimatePage({ params }: PageProps) {
           </div>
         </div>
 
+        {/* Confidence Level Indicator */}
+        <div className="mb-8 rounded-lg border bg-white p-6 shadow-sm" data-testid="confidence-indicator">
+          <div className="flex items-start gap-4">
+            <div
+              className={`rounded-full p-3 ${
+                estimate.confidence === 'HIGH'
+                  ? 'bg-green-100'
+                  : estimate.confidence === 'MEDIUM'
+                    ? 'bg-blue-100'
+                    : 'bg-yellow-100'
+              }`}
+            >
+              <svg
+                className={`h-6 w-6 ${
+                  estimate.confidence === 'HIGH'
+                    ? 'text-green-600'
+                    : estimate.confidence === 'MEDIUM'
+                      ? 'text-blue-600'
+                      : 'text-yellow-600'
+                }`}
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                {estimate.confidence === 'HIGH' ? (
+                  <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                ) : estimate.confidence === 'MEDIUM' ? (
+                  <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                ) : (
+                  <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                )}
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                {estimate.confidence === 'HIGH'
+                  ? 'High Confidence'
+                  : estimate.confidence === 'MEDIUM'
+                    ? 'Medium Confidence'
+                    : 'Low Confidence'}
+              </h3>
+              <p className="mt-1 text-sm text-gray-600">
+                {estimate.confidence === 'HIGH'
+                  ? 'Highly accurate estimate based on detailed analysis of your project photos and requirements.'
+                  : estimate.confidence === 'MEDIUM'
+                    ? 'Good estimate based on available information. Some assumptions were made that may need verification.'
+                    : 'Preliminary estimate. Additional details and site inspection recommended for accurate pricing.'}
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Line Items */}
         <div className="mb-8 overflow-hidden rounded-lg border bg-white shadow-sm">
           <div className="border-b bg-gray-50 p-4">
@@ -135,7 +190,7 @@ export default async function PublicEstimatePage({ params }: PageProps) {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {lineItems.map((item, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
+                  <tr key={i} data-testid={`line-item-${i}`} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm text-gray-900">
                       <div className="font-medium">{item.description}</div>
                       {item.notes && (
@@ -165,13 +220,13 @@ export default async function PublicEstimatePage({ params }: PageProps) {
           <div className="rounded-lg border bg-white p-6 shadow-sm">
             <h3 className="mb-4 text-lg font-semibold text-gray-900">Cost Breakdown</h3>
             <div className="space-y-3">
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-sm" data-testid="subtotal">
                 <span className="text-gray-600">Subtotal</span>
                 <span className="font-medium text-gray-900">
                   ${Number(estimate.subtotal).toFixed(2)}
                 </span>
               </div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-sm" data-testid="margin">
                 <span className="text-gray-600">
                   Margin ({Number(estimate.margin).toFixed(0)}%)
                 </span>
@@ -179,7 +234,7 @@ export default async function PublicEstimatePage({ params }: PageProps) {
                   ${((Number(estimate.subtotal) * Number(estimate.margin)) / 100).toFixed(2)}
                 </span>
               </div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-sm" data-testid="contingency">
                 <span className="text-gray-600">
                   Contingency ({Number(estimate.contingency).toFixed(0)}%)
                 </span>
@@ -187,7 +242,7 @@ export default async function PublicEstimatePage({ params }: PageProps) {
                   ${((Number(estimate.subtotal) * Number(estimate.contingency)) / 100).toFixed(2)}
                 </span>
               </div>
-              <div className="border-t pt-3">
+              <div className="border-t pt-3" data-testid="total-cost">
                 <div className="flex justify-between">
                   <span className="text-base font-semibold text-gray-900">Total Project Cost</span>
                   <span className="text-2xl font-bold text-gray-900">
@@ -209,9 +264,56 @@ export default async function PublicEstimatePage({ params }: PageProps) {
                     ${totalPaid.toFixed(2)}
                   </p>
                 </div>
+
+                {/* Payment History */}
+                <div className="space-y-3">
+                  <h4 className="text-base font-semibold text-gray-900">Payment History</h4>
+                  <div className="space-y-2">
+                    {estimate.payments.map((payment) => (
+                      <div
+                        key={payment.id}
+                        className="flex items-center justify-between rounded-lg border bg-gray-50 p-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100">
+                            <svg
+                              className="h-4 w-4 text-green-600"
+                              fill="none"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">
+                              {payment.type === 'DEPOSIT'
+                                ? 'Deposit'
+                                : payment.type === 'MILESTONE'
+                                  ? 'Milestone Payment'
+                                  : 'Final Payment'}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {payment.paidAt
+                                ? new Date(payment.paidAt).toLocaleDateString()
+                                : new Date(payment.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          ${Number(payment.amount).toFixed(2)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {remainingBalance > 0 && (
                   <>
-                    <div className="space-y-2">
+                    <div className="space-y-2 border-t pt-4">
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Remaining Balance</span>
                         <span className="font-semibold text-gray-900">
@@ -227,7 +329,7 @@ export default async function PublicEstimatePage({ params }: PageProps) {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="rounded-lg bg-blue-50 p-4">
+                <div className="rounded-lg bg-blue-50 p-4" data-testid="deposit-amount">
                   <p className="text-sm font-medium text-blue-900">
                     Deposit Required ({Number(estimate.contractor.depositPercentage).toFixed(0)}%)
                   </p>

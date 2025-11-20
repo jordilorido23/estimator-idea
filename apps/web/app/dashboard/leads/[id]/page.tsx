@@ -5,6 +5,7 @@ import { StatusBadge } from '@scopeguard/ui';
 import Link from 'next/link';
 import Image from 'next/image';
 import { FileText, Download } from 'lucide-react';
+import { getAuth } from '@/lib/test-auth-helpers';
 
 type PageProps = {
   params: {
@@ -13,14 +14,13 @@ type PageProps = {
 };
 
 export default async function LeadDetailPage({ params }: PageProps) {
-  const { userId } = await auth();
+  const authResult = await getAuth();
 
-  if (!userId) {
+  if (!authResult.userId) {
     redirect('/sign-in');
   }
 
-  const user = await auth();
-  const userEmail = user.sessionClaims?.email as string | undefined;
+  const userEmail = authResult.sessionClaims?.email as string | undefined;
 
   if (!userEmail) {
     redirect('/sign-in');
@@ -338,6 +338,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
           <Link
             href={`/dashboard/leads/${lead.id}/estimate/new`}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            data-testid="create-estimate-button"
           >
             Create Estimate
           </Link>

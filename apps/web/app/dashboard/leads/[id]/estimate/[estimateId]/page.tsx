@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { PdfDownloadButton } from './pdf-download-button';
 import { EstimateFeedbackForm } from '@/components/estimate-feedback-form';
 import { AIReviewPanel } from '@/components/ai-review-panel';
+import { getAuth } from '@/lib/test-auth-helpers';
 
 type PageProps = {
   params: {
@@ -15,14 +16,13 @@ type PageProps = {
 };
 
 export default async function EstimateDetailPage({ params }: PageProps) {
-  const { userId } = await auth();
+  const authResult = await getAuth();
 
-  if (!userId) {
+  if (!authResult.userId) {
     redirect('/sign-in');
   }
 
-  const user = await auth();
-  const userEmail = user.sessionClaims?.email as string | undefined;
+  const userEmail = authResult.sessionClaims?.email as string | undefined;
 
   if (!userEmail) {
     redirect('/sign-in');
@@ -121,10 +121,10 @@ export default async function EstimateDetailPage({ params }: PageProps) {
                   <td className="px-4 py-3 text-right text-sm">{item.quantity}</td>
                   <td className="px-4 py-3 text-sm">{item.unit}</td>
                   <td className="px-4 py-3 text-right text-sm">
-                    ${item.unitCost.toFixed(2)}
+                    ${(item.unitCost ?? 0).toFixed(2)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-medium">
-                    ${item.totalCost.toFixed(2)}
+                    ${(item.totalCost ?? 0).toFixed(2)}
                   </td>
                 </tr>
               ))}

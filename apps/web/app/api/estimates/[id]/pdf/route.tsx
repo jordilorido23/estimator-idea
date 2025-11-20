@@ -3,6 +3,7 @@ import { renderToStream } from '@react-pdf/renderer';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@scopeguard/db/client';
 import { ProposalDocument } from '@/lib/pdf/proposal-generator';
+import { getAuth } from '@/lib/test-auth-helpers';
 
 export async function GET(
   _request: NextRequest,
@@ -10,8 +11,8 @@ export async function GET(
 ) {
   try {
     // Get authenticated user
-    const { userId } = await auth();
-    if (!userId) {
+    const authResult = await getAuth();
+    if (!authResult.userId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }

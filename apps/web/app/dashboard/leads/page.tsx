@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { prisma } from '@scopeguard/db';
 import { LeadsClient } from './leads-client';
+import { getAuth } from '@/lib/test-auth-helpers';
 
 type SearchParams = {
   status?: string;
@@ -14,14 +15,13 @@ export default async function LeadsPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const { userId } = await auth();
+  const authResult = await getAuth();
 
-  if (!userId) {
+  if (!authResult.userId) {
     redirect('/sign-in');
   }
 
-  const user = await auth();
-  const userEmail = user.sessionClaims?.email as string | undefined;
+  const userEmail = authResult.sessionClaims?.email as string | undefined;
 
   if (!userEmail) {
     redirect('/sign-in');
@@ -79,6 +79,7 @@ export default async function LeadsPage({
     <LeadsClient
       leads={leads}
       initialStatus={searchParams.status}
+      initialTradeType={searchParams.tradeType}
       initialSort={searchParams.sort || 'newest'}
     />
   );

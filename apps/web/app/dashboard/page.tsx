@@ -3,16 +3,16 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@scopeguard/db';
 import { StatusBadge } from '@scopeguard/ui';
 import Link from 'next/link';
+import { getAuth } from '@/lib/test-auth-helpers';
 
 export default async function DashboardPage() {
-  const { userId } = await auth();
+  const authResult = await getAuth();
 
-  if (!userId) {
+  if (!authResult.userId) {
     redirect('/sign-in');
   }
 
-  const user = await auth();
-  const userEmail = user.sessionClaims?.email as string | undefined;
+  const userEmail = authResult.sessionClaims?.email as string | undefined;
 
   if (!userEmail) {
     redirect('/sign-in');
