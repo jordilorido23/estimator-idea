@@ -4,6 +4,7 @@ import { prisma } from '@scopeguard/db';
 import { StatusBadge } from '@scopeguard/ui';
 import Link from 'next/link';
 import Image from 'next/image';
+import { FileText, Download } from 'lucide-react';
 
 type PageProps = {
   params: {
@@ -40,6 +41,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
     },
     include: {
       photos: true,
+      documents: true,
       takeoffs: {
         orderBy: { createdAt: 'desc' },
         take: 1,
@@ -165,14 +167,53 @@ export default async function LeadDetailPage({ params }: PageProps) {
             </div>
           )}
         </div>
+
+        {/* Documents */}
+        <div className="rounded-lg border bg-card p-6">
+          <h3 className="mb-4 text-lg font-semibold">Plans & Documents ({lead.documents.length})</h3>
+          {lead.documents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No documents uploaded</p>
+          ) : (
+            <div className="space-y-2">
+              {lead.documents.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-center justify-between rounded-lg border bg-muted/30 p-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">{doc.fileName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {doc.fileType} • {(doc.fileSizeBytes / (1024 * 1024)).toFixed(1)}MB
+                      </p>
+                    </div>
+                  </div>
+                  <a
+                    href={doc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-sm text-primary hover:underline"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* AI Analysis */}
-      {!latestTakeoff && lead.photos.length > 0 && (
+      {!latestTakeoff && (lead.photos.length > 0 || lead.documents.length > 0) && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-6">
           <h3 className="mb-2 text-lg font-semibold">AI Analysis</h3>
           <p className="mb-4 text-sm text-muted-foreground">
-            This lead has photos but hasn't been analyzed yet.
+            This lead has {lead.photos.length > 0 && `${lead.photos.length} photo${lead.photos.length > 1 ? 's' : ''}`}
+            {lead.photos.length > 0 && lead.documents.length > 0 && ' and '}
+            {lead.documents.length > 0 && `${lead.documents.length} document${lead.documents.length > 1 ? 's' : ''}`}
+            {' '}but hasn't been analyzed yet.
           </p>
           <form action={`/api/leads/${lead.id}/analyze`} method="POST">
             <button

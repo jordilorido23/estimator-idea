@@ -35,6 +35,24 @@ export type InngestEvents = {
       };
     };
   };
+  'lead/document.analyze': {
+    data: {
+      leadId: string;
+      documents: Array<{
+        url: string;
+        fileName: string;
+        contentType: string;
+      }>;
+      leadData: {
+        homeownerName: string;
+        address: string;
+        tradeType: string;
+        budget?: number;
+        timeline?: string;
+        notes?: string;
+      };
+    };
+  };
   'lead/email.send': {
     data: {
       type: 'new-lead' | 'homeowner-confirmation';

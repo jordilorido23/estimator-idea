@@ -9,6 +9,15 @@ const photoMetadataSchema = z.object({
   size: z.number().nonnegative()
 });
 
+const documentMetadataSchema = z.object({
+  id: z.string().optional(),
+  key: z.string({ required_error: 'Document key is required' }),
+  url: z.string().url('Document URL must be valid'),
+  name: z.string().min(1, 'Document name is required'),
+  type: z.string().min(1, 'Document content-type is required'),
+  size: z.number().nonnegative()
+});
+
 const budgetSchema = z
   .preprocess((value) => {
     if (typeof value === 'number') {
@@ -42,8 +51,10 @@ export const leadIntakeSchema = z.object({
     .string()
     .min(10, 'A short description helps the contractor plan ahead')
     .max(2000, 'Please keep the description under 2000 characters'),
-  photos: z.array(photoMetadataSchema).max(10, 'Please upload up to 10 photos').optional()
+  photos: z.array(photoMetadataSchema).max(10, 'Please upload up to 10 photos').optional(),
+  documents: z.array(documentMetadataSchema).max(10, 'Please upload up to 10 documents').optional()
 });
 
 export type LeadIntakeValues = z.infer<typeof leadIntakeSchema>;
 export type LeadPhotoMetadata = z.infer<typeof photoMetadataSchema>;
+export type LeadDocumentMetadata = z.infer<typeof documentMetadataSchema>;

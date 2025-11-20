@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { contractorSlug, photos = [], ...payload } = leadSubmissionSchema.parse(body);
+    const { contractorSlug, photos = [], documents = [], ...payload } = leadSubmissionSchema.parse(body);
 
     const contractor = await prisma.contractor.findUnique({
       where: { slug: contractorSlug },
@@ -46,6 +46,14 @@ export async function POST(request: Request) {
 
     // Convert budget to cents if provided
     const budgetCents = typeof payload.budget === 'number' ? Math.round(payload.budget * 100) : undefined;
+
+    // Helper to map content type to DocumentType enum
+    const getDocumentType = (contentType: string): 'PDF' | 'IMAGE' | 'DWG' | 'OTHER' => {
+      if (contentType === 'application/pdf') return 'PDF';
+      if (contentType.startsWith('image/')) return 'IMAGE';
+      if (contentType.includes('dwg') || contentType.includes('dxf')) return 'DWG';
+      return 'OTHER';
+    };
 
     const lead = await prisma.lead.create({
       data: {
@@ -70,10 +78,25 @@ export async function POST(request: Request) {
                 }
               }))
             }
+          : undefined,
+        documents: documents.length
+          ? {
+              create: documents.map((doc) => ({
+                url: doc.url,
+                key: doc.key,
+                fileName: doc.name,
+                fileType: getDocumentType(doc.type),
+                fileSizeBytes: doc.size,
+                metadata: {
+                  contentType: doc.type
+                }
+              }))
+            }
           : undefined
       },
       include: {
-        photos: true
+        photos: true,
+        documents: true
       }
     });
 
@@ -82,6 +105,7 @@ export async function POST(request: Request) {
       contractor,
       lead,
       photoCount: photos.length,
+      documentCount: documents.length,
     }).catch((error) => {
       console.error('Email notification failed for lead', lead.id, error);
     });
@@ -107,6 +131,31 @@ export async function POST(request: Request) {
       });
 
       console.log(`Queued photo analysis job for lead ${lead.id} with ${photos.length} photos`);
+    }
+
+    // Trigger background job for document analysis if documents were uploaded
+    if (documents.length > 0) {
+      await inngest.send({
+        name: 'lead/document.analyze',
+        data: {
+          leadId: lead.id,
+          documents: documents.map((doc) => ({
+            url: doc.url,
+            fileName: doc.name,
+            contentType: doc.type,
+          })),
+          leadData: {
+            homeownerName: payload.homeownerName,
+            address: payload.address,
+            tradeType: payload.projectType,
+            budget: payload.budget,
+            timeline: payload.timeline,
+            notes: payload.description,
+          },
+        },
+      });
+
+      console.log(`Queued document analysis job for lead ${lead.id} with ${documents.length} documents`);
     }
 
     return NextResponse.json({ lead }, { headers: rateLimitResult.headers });

@@ -1,10 +1,10 @@
 import { getAnthropicClient, AI_MODELS } from '../ai';
-import type { PhotoAnalysis } from './schemas';
+import type { PhotoAnalysis, PlanAnalysis } from './schemas';
 import { retryWithBackoff, AIError } from './retry';
 import { ScopeOfWorkSchema, type ScopeOfWork } from './schemas';
 
 /**
- * Generate a detailed scope of work from lead data and photo analysis
+ * Generate a detailed scope of work from lead data and photo/plan analysis
  */
 export async function generateScopeOfWork(input: {
   leadData: {
@@ -15,21 +15,17 @@ export async function generateScopeOfWork(input: {
     timeline?: string;
     notes?: string;
   };
-  photoAnalyses: PhotoAnalysis[];
+  photoAnalyses?: PhotoAnalysis[];
+  planAnalyses?: Array<{
+    fileName: string;
+    analysis: PlanAnalysis;
+  }>;
 }): Promise<ScopeOfWork> {
   const client = getAnthropicClient();
 
-  const prompt = `You are a construction project manager creating a preliminary scope of work for an estimate.
-
-**Project Information:**
-- Homeowner: ${input.leadData.homeownerName}
-- Address: ${input.leadData.address}
-- Requested Trade Type: ${input.leadData.tradeType}
-${input.leadData.budget ? `- Budget: $${input.leadData.budget}` : ''}
-${input.leadData.timeline ? `- Timeline: ${input.leadData.timeline}` : ''}
-${input.leadData.notes ? `- Homeowner Notes: ${input.leadData.notes}` : ''}
-
-**Photo Analysis Results:**
+  // Build the photo analysis section
+  const photoSection = input.photoAnalyses && input.photoAnalyses.length > 0
+    ? `**Photo Analysis Results:**
 ${input.photoAnalyses.map((analysis, i) => `
 Photo ${i + 1}:
 - Trades: ${analysis.tradeType.join(', ')}
@@ -41,9 +37,51 @@ ${analysis.damage ? `- Damage: ${analysis.damage.severity} - ${analysis.damage.d
 - Work Items: ${analysis.workItems.join('; ')}
 ${analysis.safetyHazards?.length ? `- Safety Hazards: ${analysis.safetyHazards.join(', ')}` : ''}
 - Notes: ${analysis.notes}
-`).join('\n')}
+`).join('\n')}`
+    : '';
+
+  // Build the plan analysis section
+  const planSection = input.planAnalyses && input.planAnalyses.length > 0
+    ? `**Construction Plan Analysis:**
+${input.planAnalyses.map((plan, i) => `
+Plan ${i + 1}: ${plan.fileName}
+- Document Type: ${plan.analysis.documentType}
+${plan.analysis.scale ? `- Scale: ${plan.analysis.scale}` : ''}
+- Rooms/Spaces: ${plan.analysis.rooms.map(r => `${r.roomName} (${r.area ? r.area + ' sq ft' : 'area not specified'})`).join(', ')}
+- Total Square Footage: ${plan.analysis.rooms.reduce((sum, r) => sum + (r.area || 0), 0).toFixed(0)} sq ft
+- Structural Elements: ${plan.analysis.structuralElements ? `${plan.analysis.structuralElements.doors || 0} doors, ${plan.analysis.structuralElements.windows || 0} windows, ${plan.analysis.structuralElements.walls || 0} linear feet of walls` : 'Not specified'}
+- Materials: ${plan.analysis.materials.join(', ')}
+- Scope Items: ${plan.analysis.scopeItems.join('; ')}
+- Annotations: ${plan.analysis.annotations.join('; ')}
+${plan.analysis.potentialIssues.length > 0 ? `- Plan Issues: ${plan.analysis.potentialIssues.join('; ')}` : ''}
+${plan.analysis.missingInformation.length > 0 ? `- Missing from Plan: ${plan.analysis.missingInformation.join('; ')}` : ''}
+- Confidence: ${(plan.analysis.confidence * 100).toFixed(0)}%
+- Notes: ${plan.analysis.notes}
+`).join('\n')}`
+    : '';
+
+  const prompt = `You are a construction project manager creating a preliminary scope of work for a residential remodeling estimate.
+
+**Project Information:**
+- Homeowner: ${input.leadData.homeownerName}
+- Address: ${input.leadData.address}
+- Requested Trade Type: ${input.leadData.tradeType}
+${input.leadData.budget ? `- Budget: $${input.leadData.budget}` : ''}
+${input.leadData.timeline ? `- Timeline: ${input.leadData.timeline}` : ''}
+${input.leadData.notes ? `- Homeowner Notes: ${input.leadData.notes}` : ''}
+
+${photoSection}
+
+${planSection}
 
 Based on this information, create a comprehensive scope of work for the contractor.
+
+**Important Guidelines:**
+${input.planAnalyses && input.planAnalyses.length > 0 ? '- PRIORITIZE measurements and quantities from construction plans over photo estimates' : ''}
+${input.photoAnalyses && input.photoAnalyses.length > 0 ? '- Use photo analysis for current conditions, damage assessment, and access constraints' : ''}
+- Combine insights from both photos and plans for the most accurate scope
+- Be specific about quantities when plans provide exact measurements
+- Flag discrepancies between photos and plans
 
 **Your task:**
 1. Write a brief summary (2-3 sentences) of the project

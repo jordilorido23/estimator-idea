@@ -26,7 +26,8 @@ import {
 } from '@scopeguard/ui';
 
 import { leadIntakeSchema } from '@/lib/validators/lead-intake';
-import type { LeadIntakeValues, LeadPhotoMetadata } from '@/lib/validators/lead-intake';
+import type { LeadIntakeValues, LeadPhotoMetadata, LeadDocumentMetadata } from '@/lib/validators/lead-intake';
+import { DocumentUpload, type DocumentMetadata } from './document-upload';
 
 type IntakeFormProps = {
   contractorSlug: string;
@@ -68,7 +69,8 @@ const initialValues: LeadIntakeValues = {
   budget: undefined,
   timeline: '',
   description: '',
-  photos: []
+  photos: [],
+  documents: []
 };
 
 export function IntakeForm({ contractorSlug, contractorName, projectTypes }: IntakeFormProps) {
@@ -497,6 +499,22 @@ export function IntakeForm({ contractorSlug, contractorName, projectTypes }: Int
               </ul>
             ) : null}
           </div>
+
+          <DocumentUpload
+            contractorSlug={contractorSlug}
+            leadTempId={leadTempId}
+            onDocumentsChange={(documents) => {
+              const documentMetadata: LeadDocumentMetadata[] = documents.map((doc) => ({
+                id: doc.id,
+                key: doc.key,
+                url: doc.url,
+                name: doc.name,
+                type: doc.type,
+                size: doc.size,
+              }));
+              form.setValue('documents', documentMetadata, { shouldValidate: true });
+            }}
+          />
 
           {formStatus.type !== 'idle' && formStatus.message ? (
             <div

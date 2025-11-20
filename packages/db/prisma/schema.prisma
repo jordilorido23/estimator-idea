@@ -69,6 +69,19 @@ enum ProjectOutcome {
   CANCELLED
 }
 
+enum DocumentType {
+  PDF
+  IMAGE
+  DWG
+  OTHER
+}
+
+enum TakeoffSourceType {
+  PHOTO
+  DOCUMENT
+  HYBRID
+}
+
 // Models
 model Contractor {
   id                String           @id @default(cuid())
@@ -109,6 +122,7 @@ model Lead {
   timeline         String?
   stripeCustomerId String?
   photos           Photo[]
+  documents        Document[]
   takeoffs         Takeoff[]
   estimates        Estimate[]
   aiUsages         AIUsage[]
@@ -135,24 +149,43 @@ model Photo {
   @@index([leadId])
 }
 
+model Document {
+  id            String       @id @default(cuid())
+  leadId        String
+  lead          Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  url           String
+  key           String       @unique
+  fileName      String
+  fileType      DocumentType
+  fileSizeBytes Int
+  metadata      Json? // Store extracted data, page count, dimensions, etc.
+  createdAt     DateTime     @default(now())
+
+  @@index([leadId])
+  @@index([fileType])
+}
+
 model Takeoff {
-  id               String    @id @default(cuid())
+  id               String             @id @default(cuid())
   leadId           String
-  lead             Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lead             Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
   tradeType        TradeType
   provider         String
   version          String
+  sourceType       TakeoffSourceType  @default(PHOTO) // Track what was analyzed
+  documentIds      String[] // IDs of documents used in this takeoff
   data             Json
   confidence       Float?
   // AI analysis accuracy review fields
   reviewedAt       DateTime?
   accuracyFeedback Json? // Array of { field: string, correct: boolean, correctedValue?: any }
   overallAccuracy  Float? // 0-1 score based on feedback
-  reviewNotes      String?   @db.Text
-  createdAt        DateTime  @default(now())
+  reviewNotes      String?            @db.Text
+  createdAt        DateTime           @default(now())
 
   @@index([leadId, createdAt])
   @@index([reviewedAt])
+  @@index([sourceType])
 }
 
 model Estimate {

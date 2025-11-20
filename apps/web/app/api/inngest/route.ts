@@ -1,6 +1,7 @@
 import { serve } from 'inngest/next';
 import { inngest } from '@/lib/inngest/client';
 import { analyzePhotosFunction } from '@/lib/inngest/functions/analyze-photos';
+import { analyzeDocumentsFunction } from '@/lib/inngest/functions/analyze-documents';
 
 /**
  * Inngest API route for background jobs
@@ -19,6 +20,7 @@ export const { GET, POST, PUT } = serve({
   client: inngest,
   functions: [
     analyzePhotosFunction,
+    analyzeDocumentsFunction,
     // Add more functions here as you create them
   ],
   streaming: 'allow', // Enable streaming for better performance

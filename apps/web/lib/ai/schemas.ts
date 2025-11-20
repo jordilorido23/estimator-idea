@@ -114,3 +114,86 @@ export const MultiplePhotoAnalysisResultSchema = z.object({
 });
 
 export type MultiplePhotoAnalysisResult = z.infer<typeof MultiplePhotoAnalysisResultSchema>;
+
+/**
+ * Schema for validating room dimensions extracted from plans
+ */
+export const RoomDimensionsSchema = z.object({
+  roomName: z.string().min(1, 'Room name is required'),
+  length: z.number().positive('Length must be positive').optional(),
+  width: z.number().positive('Width must be positive').optional(),
+  height: z.number().positive('Height must be positive').optional(),
+  area: z.number().nonnegative('Area cannot be negative').optional(),
+  unit: z.enum(['feet', 'inches', 'meters', 'centimeters']).default('feet'),
+  confidence: z.enum(['low', 'medium', 'high']),
+  notes: z.string().optional(),
+});
+
+export type RoomDimensions = z.infer<typeof RoomDimensionsSchema>;
+
+/**
+ * Schema for validating quantity takeoffs from plans
+ */
+export const QuantityTakeoffSchema = z.object({
+  item: z.string().min(1, 'Item name is required'),
+  quantity: z.number().nonnegative('Quantity cannot be negative'),
+  unit: z.string().min(1, 'Unit is required'),
+  category: z.string().min(1, 'Category is required'),
+  notes: z.string().optional(),
+});
+
+export type QuantityTakeoff = z.infer<typeof QuantityTakeoffSchema>;
+
+/**
+ * Schema for validating plan/document analysis output
+ */
+export const PlanAnalysisSchema = z.object({
+  documentType: z.enum(['architectural_plan', 'floor_plan', 'elevation', 'section', 'detail', 'site_plan', 'other']),
+  scale: z.string().optional(),
+  rooms: z.array(RoomDimensionsSchema),
+  quantities: z.array(QuantityTakeoffSchema),
+  structuralElements: z.object({
+    walls: z.number().nonnegative().optional(),
+    doors: z.number().nonnegative().optional(),
+    windows: z.number().nonnegative().optional(),
+    stairs: z.number().nonnegative().optional(),
+  }).optional(),
+  materials: z.array(z.string()),
+  annotations: z.array(z.string()),
+  scopeItems: z.array(z.string()).min(1, 'At least one scope item is required'),
+  potentialIssues: z.array(z.string()),
+  missingInformation: z.array(z.string()),
+  confidence: z.number().min(0).max(1, 'Confidence must be between 0 and 1'),
+  notes: z.string(),
+});
+
+export type PlanAnalysis = z.infer<typeof PlanAnalysisSchema>;
+
+/**
+ * Schema for validating combined photo + document analysis
+ */
+export const CombinedAnalysisSchema = z.object({
+  photoAnalyses: z.array(
+    z.object({
+      url: z.string().url(),
+      analysis: PhotoAnalysisSchema,
+    })
+  ).optional(),
+  planAnalyses: z.array(
+    z.object({
+      documentId: z.string(),
+      fileName: z.string(),
+      analysis: PlanAnalysisSchema,
+    })
+  ).optional(),
+  summary: z.object({
+    overallConfidence: z.number().min(0).max(1),
+    primaryTrades: z.array(z.string()),
+    totalSquareFootage: z.number().nonnegative().optional(),
+    estimatedComplexity: z.enum(['low', 'medium', 'high']),
+    dataQuality: z.enum(['poor', 'fair', 'good', 'excellent']),
+    recommendAnalyzeDocuments: z.boolean(), // True if photos exist but no plans
+  }),
+});
+
+export type CombinedAnalysis = z.infer<typeof CombinedAnalysisSchema>;
