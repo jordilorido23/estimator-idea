@@ -10,8 +10,9 @@ dist
 .env.production
 .env.test
 !.env.example
-pnpm-lock.yaml
 yarn.lock
 .DS_Store
 .prisma
 coverage
+*.tsbuildinfo
+tsconfig.tsbuildinfo
