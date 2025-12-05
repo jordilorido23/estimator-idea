@@ -2,13 +2,33 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { NextMiddleware } from 'next/server';
 
 /**
- * Check if we should bypass auth for e2e tests
+ * Check if we should bypass auth for e2e tests or when Clerk is not configured
  */
 const shouldBypassAuth = () => {
-  return (
-    process.env.E2E_BYPASS_AUTH === 'true' &&
-    process.env.NODE_ENV !== 'production'
-  );
+  // Always bypass in E2E test mode
+  if (process.env.E2E_BYPASS_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
+    return true;
+  }
+
+  // Bypass if Clerk keys are not properly configured (placeholder or missing)
+  // This allows local development without Clerk setup
+  if (process.env.NODE_ENV !== 'production') {
+    const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+    const secretKey = process.env.CLERK_SECRET_KEY;
+
+    if (
+      !publishableKey ||
+      !secretKey ||
+      publishableKey.includes('placeholder') ||
+      secretKey.includes('placeholder') ||
+      publishableKey === 'pk_test_...' ||
+      secretKey === 'sk_test_...'
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 /**
